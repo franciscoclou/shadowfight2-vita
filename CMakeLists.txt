@@ -66,10 +66,11 @@ target_link_libraries(${PROJECT_NAME}
   SceShaccCgExt
   mathneon
   taihen_stub
-  kubridge_stub
+  kubridge_stub_weak
   SceShaccCg_stub
   z
   m
+  pthread
   SceSysmem_stub
   SceGxm_stub
   SceDisplay_stub
@@ -86,6 +87,7 @@ target_link_libraries(${PROJECT_NAME}
   SceNet_stub
   SceNetCtl_stub
   SceIme_stub
+  SceVshBridge_stub
 )
 
 vita_create_self(eboot.bin ${PROJECT_NAME} UNSAFE)
