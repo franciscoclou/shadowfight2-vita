@@ -26,6 +26,10 @@ psp2core-*.psp2dmp
 dumps/*.psp2dmp
 dumps/*.txt
 
+# --- host test harness (scripts/harness.sh) ---
+tests/harness/out/
+tests/harness/harness
+
 # --- local overrides ---
 # Per-machine IPs etc. See scripts/env.sh.
 scripts/env.local.sh
