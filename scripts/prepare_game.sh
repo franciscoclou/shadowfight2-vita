@@ -20,6 +20,9 @@ python3 -I "$REPO_ROOT/scripts/unpack_s3e.py" \
 echo ">> config and data"
 cp "$APK_DIR"/assets/*.icf "$APK_DIR"/assets/*.txt "$APK_DIR"/assets/*.xml "$GAME_OUT/"
 cp -r "$APK_DIR/assets/assets" "$GAME_OUT/assets"
+# Marmalade's runtime reads its app settings from app.icf; the APK ships the
+# Android variant under its source name.
+cp "$APK_DIR/assets/app_android.icf" "$GAME_OUT/app.icf"
 
 echo
 echo ">> game_out/ is $(du -sh "$GAME_OUT" | cut -f1)"

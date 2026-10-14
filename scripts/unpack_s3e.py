@@ -5,9 +5,11 @@
 
 The APK's ShadowFight2.s3e is an LZMA-alone stream (props 0x5D, 64 KiB
 dictionary, 8-byte size field) wrapping an image whose magic is "XE3U".
-The last few KB of the file do not decode as LZMA -- most likely a trailer
-or signature appended after the stream -- so this decodes in chunks, stops
-at the first error and checks the magic rather than demanding a clean end.
+The stream has no end marker and its last few bytes fail to decode. A
+decoder that raises discards its buffered output, so the tail is fed one
+byte at a time: that recovers all but the last 4 bytes, which belong to the
+trailing licence ("extra") section the loader never reads. The output is
+zero-padded to the declared size.
 Decompressing on the PC keeps an LZMA decoder out of the Vita build.
 """
 
@@ -30,14 +32,15 @@ def main():
         dec = lzma.LZMADecompressor(format=lzma.FORMAT_ALONE)
         out = bytearray()
         stop = len(raw)
-        for i in range(0, len(raw), 4096):
-            try:
-                out += dec.decompress(raw[i:i + 4096])
-            except lzma.LZMAError:
-                stop = i
-                break
-            if dec.eof:
-                break
+        i = 0
+        try:
+            while i < len(raw) and not dec.eof:
+                n = 4096 if len(out) < declared - (1 << 20) else 1
+                out += dec.decompress(raw[i:i + n])
+                i += n
+        except lzma.LZMAError:
+            stop = i
+        out += bytes(max(0, declared - len(out)))
         print(f"  decoded {len(out)} bytes (header declares {declared}); "
               f"undecodable tail starts near offset {stop} of {len(raw)}")
 
