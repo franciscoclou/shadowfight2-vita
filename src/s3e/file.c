@@ -69,23 +69,42 @@ static int is_writable_mode(const char *mode)
     return mode && (strchr(mode, 'w') || strchr(mode, 'a') || strchr(mode, '+'));
 }
 
-/* Resolve a game path. For reads, unprefixed names try ram then rom. */
+/* Resolve a game path. For reads, unprefixed names try ram then rom.
+ * Derbh spells paths Windows-style ("rom:\\assets\files.dz"), so a drive
+ * is "rom:" followed by any run of '/' or '\', and every '\' is a '/'. */
 static void resolve(const char *name, char *out, size_t n, int for_write)
 {
-    char ram[300];
+    char ram[300], norm[400], *p;
+    const char *rest = NULL;
+    int drive = 0;   /* 0 none, 1 rom, 2 ram, 3 raw */
     struct stat st;
 
+    snprintf(norm, sizeof(norm), "%s", name);
+    for (p = norm; *p; p++)
+        if (*p == '\\')
+            *p = '/';
+    if (!strncmp(norm, "rom:", 4)) drive = 1;
+    else if (!strncmp(norm, "ram:", 4)) drive = 2;
+    else if (!strncmp(norm, "raw:", 4)) drive = 3;
+    if (drive) {
+        rest = norm + 4;
+        while (*rest == '/' && drive != 3)
+            rest++;
+        if (drive == 3 && !strncmp(rest, "//", 2))
+            rest += 2;
+    }
+
     snprintf(ram, sizeof(ram), "%s/ram", sf_data_dir);
-    if (strncmp(name, "rom://", 6) == 0)
-        join(out, n, sf_data_dir, name + 6);
-    else if (strncmp(name, "ram://", 6) == 0)
-        join(out, n, ram, name + 6);
-    else if (strncmp(name, "raw://", 6) == 0)
-        snprintf(out, n, "%s", name + 6);
+    if (drive == 1)
+        join(out, n, sf_data_dir, rest);
+    else if (drive == 2)
+        join(out, n, ram, rest);
+    else if (drive == 3)
+        snprintf(out, n, "%s", rest);
     else {
-        join(out, n, ram, name);
+        join(out, n, ram, norm);
         if (!for_write && stat(out, &st) != 0)
-            join(out, n, sf_data_dir, name);
+            join(out, n, sf_data_dir, norm);
     }
 }
 
@@ -329,7 +348,7 @@ static int64_t sf_s3eFileGetFileInt(const char *name, int32_t prop)
     switch (prop) {
     case 0: return S_ISDIR(st.st_mode) ? 1 : 0;
     case 1: return S_ISREG(st.st_mode) ? 1 : 0;
-    case 2: return strncmp(name, "rom://", 6) != 0;
+    case 2: return strncmp(name, "rom:", 4) != 0;
     case 3: return 0;
     case 4: return (int64_t)st.st_size;
     case 5: return (int64_t)st.st_mtime * 1000;

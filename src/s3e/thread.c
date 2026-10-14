@@ -4,16 +4,21 @@
  *
  * Slot meanings, from the game's own wrappers (docs/RE_NOTES.md):
  *   3  Create(start, arg, ...)          thread class ctor: Create(fn, 0,0,0,0)
- *   4  GetCurrent()
+ *   4  GetCurrent()                     the game's pthread_self()
  *   8, 11  act on a thread handle (dtor / method of the same class)
  *   9  LockCreate()                     12 LockAcquire(lock, timeout_ms)
  *   13 LockRelease(lock)
  *   14 SemCreate(count)                 sem_init wrapper; NULL -> EINVAL
  *   16 SemWait(sem, timeout_ms)         sem_wait wrapper passes -1
  *   17 SemPost(sem)
- * Slots the game never calls log their arguments if they ever are. Every
- * handle carries a type tag, so the two thread-handle slots (8, 11) can
- * tell what they were given rather than relying on a guess.
+ *
+ * Thread handles are integer IDs, not pointers: the game's pthread_self()
+ * (link 0x4a78d688) returns GetCurrent(), or 4000 when s3eThread is
+ * missing, and its TLS (0x4a7915ec/0x4a791508) indexes a 129-entry table
+ * by id - 4000. An ID outside 4000..4128 makes every TLS lookup fail and
+ * the allocator's per-thread context (0x4a78f448) recurse until the stack
+ * runs out. So the main thread is 4000 and created threads 4001 onwards.
+ * Locks and semaphores are tagged pointers.
  */
 #include "s3e/s3e_internal.h"
 #include "platform/platform.h"
@@ -22,16 +27,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { TAG_THREAD = 0x54485244, TAG_LOCK = 0x4c4f434b, TAG_SEM = 0x53454d41 };
+enum { TAG_LOCK = 0x4c4f434b, TAG_SEM = 0x53454d41 };
+enum { TID_MAIN = 4000, MAX_THREADS = 129 };
 
 typedef void *(*start_fn)(void *);
 
 typedef struct {
-    uint32_t tag;
+    int used;
     pthread_t th;
     start_fn fn;
-    void *arg, *ret;
-    int done;
+    void *arg;
 } sf_thread;
 
 typedef struct {
@@ -46,92 +51,105 @@ typedef struct {
     int count;
 } sf_sem;
 
-static sf_thread s_main = { TAG_THREAD };
+static sf_thread s_threads[MAX_THREADS];
+static pthread_mutex_t s_threads_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_key_t s_self_key;
 static pthread_once_t s_once = PTHREAD_ONCE_INIT;
 
 static void init_once(void)
 {
     pthread_key_create(&s_self_key, NULL);
-    s_main.th = pthread_self();
+    s_threads[0].used = 1;
+    s_threads[0].th = pthread_self();
 }
 
 static void *trampoline(void *p)
 {
-    sf_thread *t = p;
-    pthread_setspecific(s_self_key, t);
-    t->ret = t->fn(t->arg);
-    t->done = 1;
-    return t->ret;
+    int id = (int)(intptr_t)p;
+    sf_thread *t = &s_threads[id - TID_MAIN];
+    pthread_setspecific(s_self_key, p);
+    return t->fn(t->arg);
 }
 
 /* 3 */
-static void *thr_create(start_fn fn, void *arg, void *a2, void *a3, void *a4)
+static int32_t thr_create(start_fn fn, void *arg, void *a2, void *a3, void *a4)
 {
     pthread_attr_t attr;
-    sf_thread *t;
+    int i, id = 0;
 
     pthread_once(&s_once, init_once);
-    t = calloc(1, sizeof(*t));
-    t->tag = TAG_THREAD;
-    t->fn = fn;
-    t->arg = arg;
+    pthread_mutex_lock(&s_threads_lock);
+    for (i = 1; i < MAX_THREADS; i++) {
+        if (!s_threads[i].used) {
+            s_threads[i].used = 1;
+            s_threads[i].fn = fn;
+            s_threads[i].arg = arg;
+            id = TID_MAIN + i;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&s_threads_lock);
+    if (!id) {
+        LOGE("s3eThreadCreate: out of thread slots");
+        return 0;
+    }
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, 1024 * 1024);
-    if (pthread_create(&t->th, &attr, trampoline, t) != 0) {
+    if (pthread_create(&s_threads[id - TID_MAIN].th, &attr, trampoline, (void *)(intptr_t)id) != 0) {
         LOGE("s3eThreadCreate failed");
-        free(t);
-        t = NULL;
+        s_threads[id - TID_MAIN].used = 0;
+        id = 0;
     }
     pthread_attr_destroy(&attr);
-    LOGI("s3eThreadCreate(fn=%p, arg=%p, %p, %p, %p) -> %p", (void *)fn, arg, a2, a3, a4, (void *)t);
-    return t;
+    LOGI("s3eThreadCreate(fn=%p, arg=%p, %p, %p, %p) -> %d", (void *)fn, arg, a2, a3, a4, id);
+    return id;
 }
 
 /* 4 */
-static void *thr_current(void)
+static int32_t thr_current(void)
 {
-    LOGV("GetCurrent");
-    sf_thread *t;
+    void *self;
     pthread_once(&s_once, init_once);
-    t = pthread_getspecific(s_self_key);
-    return t ? t : &s_main;
+    self = pthread_getspecific(s_self_key);
+    return self ? (int32_t)(intptr_t)self : TID_MAIN;
 }
 
 /* 8 and 11: called on a handle by the game's thread class. A thread is
- * joined (always safe for an object being torn down); a lock or semaphore,
- * should one ever arrive here, is destroyed. */
-static int32_t thr_handle_op(int slot, void *h)
+ * joined (always safe for an object being torn down) and its slot freed;
+ * a lock or semaphore, should one ever arrive here, is destroyed. */
+static int32_t thr_handle_op(int slot, uintptr_t h)
 {
-    sf_thread *t = h;
-    if (h && *(uint32_t *)h == TAG_LOCK) {
-        pthread_mutex_destroy(&((sf_lock *)h)->m);
-        free(h);
+    if (h > TID_MAIN && h < TID_MAIN + MAX_THREADS) {
+        sf_thread *t = &s_threads[h - TID_MAIN];
+        if (t->used && (int32_t)h != thr_current()) {
+            pthread_join(t->th, NULL);
+            t->used = 0;
+            LOGI("s3eThread[%d](%u): joined", slot, (unsigned)h);
+        }
         return S3E_RESULT_SUCCESS;
     }
-    if (h && *(uint32_t *)h == TAG_SEM) {
+    if (h == TID_MAIN)
+        return S3E_RESULT_SUCCESS;
+    if (h > 0xffff && *(uint32_t *)h == TAG_LOCK) {
+        pthread_mutex_destroy(&((sf_lock *)h)->m);
+        free((void *)h);
+        return S3E_RESULT_SUCCESS;
+    }
+    if (h > 0xffff && *(uint32_t *)h == TAG_SEM) {
         pthread_cond_destroy(&((sf_sem *)h)->c);
         pthread_mutex_destroy(&((sf_sem *)h)->m);
-        free(h);
+        free((void *)h);
         return S3E_RESULT_SUCCESS;
     }
-    if (!t || t->tag != TAG_THREAD) {
-        LOGW("s3eThread[%d](%p): not a thread handle", slot, h);
-        return S3E_RESULT_ERROR;
-    }
-    if (t != &s_main && t != thr_current()) {
-        pthread_join(t->th, NULL);
-        LOGI("s3eThread[%d](%p): joined", slot, h);
-    }
-    return S3E_RESULT_SUCCESS;
+    LOGW("s3eThread[%d](%#x): unknown handle", slot, (unsigned)h);
+    return S3E_RESULT_ERROR;
 }
-static int32_t thr_slot8(void *h) { return thr_handle_op(8, h); }
-static int32_t thr_slot11(void *h) { return thr_handle_op(11, h); }
+static int32_t thr_slot8(uintptr_t h) { return thr_handle_op(8, h); }
+static int32_t thr_slot11(uintptr_t h) { return thr_handle_op(11, h); }
 
 /* 9 */
 static void *lock_create(void)
 {
-    LOGV("LockCreate");
     pthread_mutexattr_t a;
     sf_lock *l = calloc(1, sizeof(*l));
     l->tag = TAG_LOCK;

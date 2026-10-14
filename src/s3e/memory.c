@@ -31,26 +31,36 @@ static void sf_s3eFreeBase(void *ptr)
     free(ptr);
 }
 
-/* s3eMemoryProperty (values from libs3e_android.so, see docs/RE_NOTES.md):
- *   0 S3E_MEMORY_SIZE   1 S3E_MEMORY_FREE   2 S3E_MEMORY_USED
- *   3 S3E_MEMORY_LFB    4 S3E_MEMORY_HEAP   5 S3E_MEMORY_FLAGS */
+/* s3eMemoryProperty, from libs3e_android.so's s3eMemoryGetInt:
+ *   0 HEAP (current heap index)  1 SIZE  2 USED  3 FREE
+ *   4 LFB (largest free block)   5 FLAGS 6 (global, 0)
+ * The game brackets allocations with old = GetInt(HEAP); SetInt(HEAP, 7);
+ * ...; SetInt(HEAP, old), so HEAP must round-trip. Every heap is backed by
+ * the same newlib heap here. */
+static int32_t s_heap;
+
 static int32_t sf_s3eMemoryGetInt(uint32_t prop)
 {
     struct mallinfo mi = mallinfo();
+    int32_t used = (int32_t)mi.uordblks;
     switch (prop) {
-    case 0: return _newlib_heap_size_user;
-    case 1: return _newlib_heap_size_user - (int32_t)mi.uordblks;
-    case 2: return (int32_t)mi.uordblks;
-    case 3: return _newlib_heap_size_user - (int32_t)mi.uordblks;
-    case 4: return 0;
+    case 0: return s_heap;
+    case 1: return _newlib_heap_size_user;
+    case 2: return used;
+    case 3: case 4: return _newlib_heap_size_user - used;
+    case 5: case 6: return 0;
     default:
         LOGW("s3eMemoryGetInt(%u) unknown", (unsigned)prop);
-        return 0;
+        return -1;
     }
 }
 
 static int32_t sf_s3eMemorySetInt(uint32_t prop, int32_t value)
 {
+    if (prop == 0 && value >= 0 && value < 8) {
+        s_heap = value;
+        return S3E_RESULT_SUCCESS;
+    }
     LOGI("s3eMemorySetInt(%u, %d)", (unsigned)prop, (int)value);
     return S3E_RESULT_SUCCESS;
 }
@@ -59,7 +69,7 @@ static int32_t sf_s3eMemorySetInt(uint32_t prop, int32_t value)
  * the Base functions anyway, so remembering it is enough. */
 static int32_t sf_s3eMemorySetUserMemMgr(void *mgr)
 {
-    LOGI("s3eMemorySetUserMemMgr(%p)", mgr);
+    LOGV("s3eMemorySetUserMemMgr(%p)", mgr);
     return S3E_RESULT_SUCCESS;
 }
 
