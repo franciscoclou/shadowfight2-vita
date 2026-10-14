@@ -1,6 +1,8 @@
 # Reverse-engineering notes
 
 Build: Shadow Fight 2 1.9.38 (versionCode 1000109), armeabi-v7a.
+Addresses are **link-time** (image base `0x4A000000`) unless noted; the
+loader logs crash addresses in this form.
 
 ## ShadowFight2.s3e container
 
@@ -10,14 +12,103 @@ Build: Shadow Fight 2 1.9.38 (versionCode 1000109), armeabi-v7a.
 | 0x01 | `00 00 01 00` | dictionary size 0x10000 (64 KiB) |
 | 0x05 | `B1 5C 94 00 00 00 00 00` | uncompressed size 9,723,057 |
 
-- File size 3,177,132. LZMA decoding fails near offset 3,174,400, yielding
-  9,710,704 bytes (12,353 short of the declared size). **Unresolved.**
-- Decoded image starts with magic `XE3U` (Marmalade s3e executable).
-- Imports are by name: `s3eMallocBase`, `s3eReallocBase`, `s3eFreeBase`,
-  `s3eGLGetInt`, the GLES2 framebuffer/renderbuffer entry points, …
+The stream has no end marker and its last 7 bytes do not decode. A decoder
+that raises discards buffered output, so `scripts/unpack_s3e.py` feeds the
+tail byte by byte: that yields 9,723,053 bytes. The 4 missing bytes are the
+end of the XOR'd licence string ("extra" section), which nothing reads.
 
-## lib/armeabi-v7a
+## XE3U image (decompressed)
 
-`libs3e_android.so` (800 KB) is the Marmalade runtime that loads the .s3e;
-the other `libs3e*.so` are extension bridges. libsmartfox/libs3eSmartFox are
-the multiplayer client. None contain game logic.
+Header (`scripts/s3e_info.py <image> header`):
+
+| field | value |
+|---|---|
+| magic / version | `XE3U` / 0x42800 |
+| fixups | 0x12d9 + 0x4fbcc |
+| code (file / mem) | 0x50ea5, 0x8f4cf0 / 0x918204 |
+| data_off (in blob) | 0x89c000 (text is everything before) |
+| entry | blob + 0 (crt0: init, `main` at 0x4a791144, exit) |
+| config | 0x4c + 0x128d: embedded s3e.icf (system defaults) |
+| base | 0x4a000000 |
+| sig / extra | 0x945b95+0x8c / 0x945c21+0x90 (licence XOR 0xEE) |
+
+Fixup subsections:
+
+- **0** import names: u16 count (347), NUL-terminated names.
+- **1** base relocations: u32 count (79,662), u32 blob offsets. All lie in
+  the data segment and hold absolute addresses; add (load − 0x4a000000).
+- **2** empty. **4** import slots: u32 count (355), 6-byte entries
+  `{off_hi u16, off_lo u16, sym u16}`; each slot is a data word that gets
+  the function's address. Code reaches them through PLT-style veneers
+  (`add ip,pc,#..; add ip,ip,#..; ldr pc,[ip,#..]!`), 334 of them at the
+  start of text (`s3e_info.py <image> veneers`).
+
+Code is ARM mode, ARMv7 + VFP, **softfp**: `glClearColor(0,0,0,1)` loads
+0x3f800000 into r3. There are no libc imports; the game links its own libc
+and allocates through `s3eMallocBase`.
+
+## libs3e_android.so property enums (decompiled with REA)
+
+- `s3eSurfaceGetInt`: 0 WIDTH, 1 HEIGHT, 2 PITCH, 3 PIXEL_TYPE,
+  4/5 DEVICE_WIDTH/HEIGHT, 6 DEVICE_PIXEL_TYPE, 7 DEVICE_PITCH,
+  8 BLIT_DIRECTION, 9 DISPLAY, 10 NUM_DISPLAYS, 11 DEVICE_BLIT_DIRECTION,
+  12/13 *_QUANTISED, 14 ORIENTATION_LOCK, 15 GL_MODE, 16/17 *_UNSCALED.
+- `s3eGLGetInt`: 0 GL version, 1 EGL version, 2 must-suspend flag.
+- `s3eMemoryGetInt`: **0 current heap index**, 1 SIZE, 2 USED, 3 FREE,
+  4 LFB, 5 FLAGS, 6 global. The game brackets every allocation with
+  `old = GetInt(0); SetInt(0, 7); ...; SetInt(0, old)` (0x4a78c528).
+- `s3ePointerGetInt`: 0 AVAILABLE (1), 1 (0), 2/3 TYPE (2 = touch),
+  4 multi-touch flag.
+- `s3eFileGetFileInt(path, prop)` returns int64: 0 is-dir, 1 is-file,
+  2 writable, 3 user dir, 4 size, 5 mtime, 6/8 user-fs queries.
+- `s3eFileListNext(list, out)`: two arguments, no length.
+- `s3eCompressionDecompInit(type, read_cb, user)`: streaming, type <= 4.
+- `s3eDevice*` / `s3eDebug*` enums are exact from Marmalade's own headers,
+  preserved in the preprocessed `.ii` files of
+  github.com/marmalade/s3eGooglePlayGames. Android is OS id 19.
+
+## Runtime config
+
+libs3e reads `s3e.icf` (embedded), `app.icf` and `game.icf`. The APK ships
+`app_android.icf`; `prepare_game.sh` installs it as `app.icf`.
+
+## Derbh user filesystem (0x4a7528cc)
+
+The game registers its `.dz` archive layer with `s3eFileAddUserFileSys`,
+passing 11 words: 9 required callbacks then 2 zero words.
+
+| slot | addr | role |
+|---|---|---|
+| 0 | 0x4a753300 | open(name, mode) -> handle or 0 |
+| 1 | 0x4a75373c | read(buf, size, count, fh) |
+| 2 | 0x4a7525d4 | eof(fh) |
+| 3 | 0x4a7537d8 | seek(fh, off, origin) |
+| 4 | 0x4a7525ec | tell(fh) |
+| 5 | 0x4a75386c | close(fh) |
+| 6 | 0x4a75343c | list-directory(path) |
+| 7 | 0x4a75335c | list-next(list, out, len) |
+| 8 | 0x4a7525f4 | list-close(list) |
+
+Derbh spells paths Windows-style: `rom:\\assets\files.dz`.
+
+## Extensions requested at boot (s3eExtGetHash)
+
+- **s3eThread** `0xcc0b4a28`, 80-byte table, stubs at 0x4a790710..0x4a790fc8.
+  Thread handles are **integer IDs**: the game's `pthread_self()`
+  (0x4a78d688) returns `GetCurrent()`, or 4000 if s3eThread is missing, and
+  its TLS (get 0x4a7915ec, set 0x4a791508) indexes a 129-entry table by
+  `id - 4000`. Slots: 3 Create(fn, arg, 0,0,0), 4 GetCurrent,
+  8/11 on thread handles, 9 LockCreate, 12 LockAcquire(lock, ms),
+  13 LockRelease, 14 SemCreate(count), 16 SemWait(sem, ms), 17 SemPost.
+  Without it the first std::mutex throws `__concurrence_lock_error`.
+- **s3eWindow** `0xd31aa8a8`, 72 bytes: not requested at boot.
+- `0x502bcf80` (8 bytes), **s3eDialog**: answered "unavailable"; the game
+  logs an assert and continues.
+
+## Boot milestones on the qemu harness
+
+1. `_IwMain`, config reads, s3eThread.
+2. EGL: the game picks config 3 (RGB565/D16) from `eglGetConfigs`,
+   creates a GLES2 context, looks up OES extensions.
+3. First `eglSwapBuffers`, then the splash screen (logo on parchment),
+   rendered continuously for 300+ frames.
