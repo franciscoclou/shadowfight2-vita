@@ -14,6 +14,7 @@
 
 #include <kubridge.h>
 #include <psp2/apputil.h>
+#include <psp2/kernel/cpu.h>
 #include <psp2/io/stat.h>
 #include <psp2/kernel/clib.h>
 #include <psp2/kernel/modulemgr.h>
@@ -197,7 +198,10 @@ int main(void)
     log_free_memory("after mapping the game");
     sf_device_init(sf_game.config);
 
-    thid = sceKernelCreateThread("sf_game", game_thread, 0x40, SF_GAME_STACK, 0, 0, NULL);
+    /* The game's main thread gets core 0 to itself; its loader threads run
+     * on core 1 and the audio mixer on core 2 (platform/vita.c). */
+    thid = sceKernelCreateThread("sf_game", game_thread, 0x40, SF_GAME_STACK, 0,
+                                 SCE_KERNEL_CPU_MASK_USER_0, NULL);
     if (thid < 0)
         fatal("Cannot create the game thread (%#x).", (unsigned)thid);
     sceKernelStartThread(thid, 0, NULL);

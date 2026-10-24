@@ -25,6 +25,10 @@ void sf_plat_flush(void *addr, uint32_t len);
 uint64_t sf_plat_time_us(void);
 void sf_plat_sleep_us(uint32_t us);
 
+/* Called first thing on every thread the game creates (s3eThread), so the
+ * platform can keep them off the main game thread's core. */
+void sf_plat_worker_thread(void);
+
 /* A stable identifier for this device, as a hex string. The game refuses
  * to start (it flags its save as hacked) when the device ID is empty. */
 const char *sf_plat_device_id(void);

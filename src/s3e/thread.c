@@ -67,6 +67,7 @@ static void *trampoline(void *p)
 {
     int id = (int)(intptr_t)p;
     sf_thread *t = &s_threads[id - TID_MAIN];
+    sf_plat_worker_thread();
     pthread_setspecific(s_self_key, p);
     return t->fn(t->arg);
 }

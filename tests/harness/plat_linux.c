@@ -80,6 +80,8 @@ void sf_plat_audio_start(int rate, sf_audio_fill fill)
     pthread_create(&th, NULL, audio_thread, NULL);
 }
 
+void sf_plat_worker_thread(void) {}
+
 const char *sf_plat_device_id(void)
 {
     return "5f0d5f0d5f0d5f0d5f0d5f0d5f0d5f0d";

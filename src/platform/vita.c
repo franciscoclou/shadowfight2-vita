@@ -6,6 +6,7 @@
 #include <psp2/audioout.h>
 #include <psp2/common_dialog.h>
 #include <psp2/ctrl.h>
+#include <psp2/kernel/cpu.h>
 #include <psp2/kernel/openpsid.h>
 #include <psp2/message_dialog.h>
 #include <psp2/kernel/sysmem.h>
@@ -66,6 +67,11 @@ void sf_plat_sleep_us(uint32_t us)
     sceKernelDelayThread(us);
 }
 
+void sf_plat_worker_thread(void)
+{
+    sceKernelChangeThreadCpuAffinityMask(sceKernelGetThreadId(), SCE_KERNEL_CPU_MASK_USER_1);
+}
+
 /* The OpenPSID is unique per console and survives reinstalls, like the
  * Android ID the game gets on a phone. */
 const char *sf_plat_device_id(void)
@@ -114,7 +120,8 @@ void sf_plat_audio_start(int rate, sf_audio_fill fill)
     SceUID th;
     s_audio_fill = fill;
     s_audio_rate = rate;
-    th = sceKernelCreateThread("sf_audio", audio_thread, 0x10000100, 0x10000, 0, 0, NULL);
+    th = sceKernelCreateThread("sf_audio", audio_thread, 0x10000100, 0x10000, 0,
+                               SCE_KERNEL_CPU_MASK_USER_2, NULL);
     if (th < 0 || sceKernelStartThread(th, 0, NULL) < 0)
         LOGE("cannot start the audio thread: %#x", th);
 }
@@ -123,6 +130,9 @@ void sf_plat_gl_init(int width, int height)
 {
     /* Small legacy pool (the game is GLES2, not immediate mode); the RAM
      * threshold leaves the rest of main memory to the game's heap. */
+    /* Compiled shaders persist here, so only the first boot (and the first
+     * sight of each effect) pays for SceShaccCg. */
+    vglSetShaderCachePath("ux0:data/shadowfight2/shader_cache");
     vglSetupRuntimeShaderCompiler(SHARK_OPT_UNSAFE, SHARK_ENABLE, SHARK_ENABLE, SHARK_ENABLE);
     vglInitExtended(0x100000, width, height, 0x1000000, SCE_GXM_MULTISAMPLE_NONE);
     s_gl_inited = 1;
