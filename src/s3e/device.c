@@ -174,7 +174,7 @@ static const char *sf_s3eDeviceGetString(uint32_t prop)
     case 19: return "19";                   /* S3E_DEVICE_SDK_VERSION */
     case 20: return "en_US";                /* S3E_DEVICE_LOCALE */
     case 21: return "PS Vita";              /* S3E_DEVICE_NAME */
-    case 25: return "5f0d000000000000";     /* S3E_DEVICE_UNIQUE_ID */
+    case 25: return sf_plat_device_id();    /* S3E_DEVICE_UNIQUE_ID */
     case 31: return "UTC";                  /* S3E_DEVICE_TIMEZONE */
     default:
         LOGI("s3eDeviceGetString(%u) -> \"\"", (unsigned)prop);
@@ -404,11 +404,25 @@ static int32_t sf_s3eGLUnRegister(uint32_t id, s3eCallback fn) { return S3E_RESU
  * unavailable, which the game handles. */
 extern const void *const sf_s3eThread_table[20];
 
+/* s3eDeviceUniqueID (hash 0x91a0de04, one slot): Get() -> ID string. The
+ * game builds its device identifier from it (link 0x4a1c8738) and, on a
+ * non-desktop device, treats an empty one as a tampered save: it logs
+ * "Hack error: user.xml" and never leaves the title screen. */
+static const char *sf_s3eDeviceUniqueIDGet(void)
+{
+    return sf_plat_device_id();
+}
+
 static int32_t sf_s3eExtGetHash(uint32_t hash, void *table, uint32_t size)
 {
     if (hash == 0xcc0b4a28 && table && size == 20 * sizeof(void *)) {   /* s3eThread */
         memcpy(table, sf_s3eThread_table, size);
         LOGI("s3eExtGetHash: s3eThread provided");
+        return S3E_RESULT_SUCCESS;
+    }
+    if (hash == 0x91a0de04 && table && size == sizeof(void *)) {
+        *(const void **)table = (const void *)sf_s3eDeviceUniqueIDGet;
+        LOGI("s3eExtGetHash: s3eDeviceUniqueID provided (%s)", sf_plat_device_id());
         return S3E_RESULT_SUCCESS;
     }
     LOGI("s3eExtGetHash(%#x, %u bytes) -> unavailable", (unsigned)hash, (unsigned)size);

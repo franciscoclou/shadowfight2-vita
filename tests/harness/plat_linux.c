@@ -56,6 +56,11 @@ uint64_t sf_plat_time_us(void)
     return (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
 }
 
+const char *sf_plat_device_id(void)
+{
+    return "5f0d5f0d5f0d5f0d5f0d5f0d5f0d5f0d";
+}
+
 void sf_plat_sleep_us(uint32_t us)
 {
     (void)us;   /* the harness runs as fast as qemu allows */

@@ -5,6 +5,7 @@
 #include <kubridge.h>
 #include <psp2/common_dialog.h>
 #include <psp2/ctrl.h>
+#include <psp2/kernel/openpsid.h>
 #include <psp2/message_dialog.h>
 #include <psp2/kernel/sysmem.h>
 #include <psp2/kernel/threadmgr.h>
@@ -12,6 +13,7 @@
 #include <psp2/touch.h>
 #include <vitaGL.h>
 
+#include <stdio.h>
 #include <string.h>
 
 #ifndef SCE_KERNEL_MEMBLOCK_TYPE_USER_RX
@@ -61,6 +63,23 @@ uint64_t sf_plat_time_us(void)
 void sf_plat_sleep_us(uint32_t us)
 {
     sceKernelDelayThread(us);
+}
+
+/* The OpenPSID is unique per console and survives reinstalls, like the
+ * Android ID the game gets on a phone. */
+const char *sf_plat_device_id(void)
+{
+    static char id[33];
+    SceKernelOpenPsId psid;
+    int i;
+
+    if (!id[0]) {
+        memset(&psid, 0, sizeof(psid));
+        sceKernelGetOpenPsId(&psid);
+        for (i = 0; i < 16; i++)
+            snprintf(id + i * 2, 3, "%02x", (unsigned char)psid.id[i]);
+    }
+    return id;
 }
 
 void sf_plat_gl_init(int width, int height)

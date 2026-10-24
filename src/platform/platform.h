@@ -25,6 +25,10 @@ void sf_plat_flush(void *addr, uint32_t len);
 uint64_t sf_plat_time_us(void);
 void sf_plat_sleep_us(uint32_t us);
 
+/* A stable identifier for this device, as a hex string. The game refuses
+ * to start (it flags its save as hacked) when the device ID is empty. */
+const char *sf_plat_device_id(void);
+
 /* Graphics: bring up a GLES2-capable context of the given size, present a
  * frame, and look up GL entry points by name (hardfp/native ABI). */
 void  sf_plat_gl_init(int width, int height);
