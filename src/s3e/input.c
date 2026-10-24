@@ -6,10 +6,17 @@
  *
  * s3ePointerCallback: 0 BUTTON_EVENT, 1 MOTION_EVENT, 2 TOUCH_EVENT,
  * 3 TOUCH_MOTION_EVENT. Event structs as in s3ePointer.h.
+ *
+ * The game's fight controls are on-screen only, so physical controls are
+ * turned into virtual touches (ids from VPAD_ID) on those controls: the
+ * left stick / d-pad drags the joystick, face buttons hold the attack
+ * buttons. Positions are read from <data>/controls.txt, which is written
+ * with the defaults on first run so they can be tuned without a rebuild.
  */
 #include "s3e/s3e_internal.h"
 #include "platform/platform.h"
 
+#include <stdio.h>
 #include <string.h>
 
 typedef struct { int32_t button, pressed, x, y; } s3ePointerEvent;
@@ -37,12 +44,104 @@ static int find_touch(const sf_input *in, int id)
     return -1;
 }
 
-/* Vita buttons -> s3eKey codes (s3eKeyboard.h): arrows 9-12, Enter 4,
- * Esc 1, Space 8, Back 210 (Android back), Menu 211. */
+/* Vita buttons -> s3eKey codes (s3eKeyboard.h): Back 210 (Android back),
+ * Menu 211. The others drive virtual touches instead. */
 static const struct { uint32_t btn; int key; } s_keymap[] = {
-    { SF_BTN_LEFT, 9 }, { SF_BTN_UP, 10 }, { SF_BTN_RIGHT, 11 }, { SF_BTN_DOWN, 12 },
-    { SF_BTN_CROSS, 4 }, { SF_BTN_CIRCLE, 210 }, { SF_BTN_START, 211 }, { SF_BTN_SQUARE, 8 },
+    { SF_BTN_CIRCLE, 210 }, { SF_BTN_START, 211 },
 };
+
+/* --- virtual touches ------------------------------------------------------ */
+
+#define VPAD_ID 200
+
+enum { V_PUNCH, V_KICK, V_RANGED, V_MAGIC, V_NBUTTONS };
+static struct { const char *name; uint32_t btn; int x, y; } s_vbtn[V_NBUTTONS] = {
+    { "punch",  SF_BTN_SQUARE,   850, 470 },
+    { "kick",   SF_BTN_CROSS,    905, 385 },
+    { "ranged", SF_BTN_TRIANGLE, 905, 280 },
+    { "magic",  SF_BTN_R,        790, 300 },
+};
+static int s_joy_x = 125, s_joy_y = 420, s_joy_r = 60, s_deadzone = 40;
+
+static void load_controls(void)
+{
+    char path[300], line[128], name[32];
+    FILE *f;
+    int i, x, y;
+
+    snprintf(path, sizeof(path), "%s/controls.txt", sf_data_dir);
+    if (!(f = fopen(path, "r"))) {
+        if ((f = fopen(path, "w"))) {
+            fprintf(f, "# Shadow Fight 2 controls: screen points (960x544) the Vita\n"
+                       "# buttons press. Delete this file to restore the defaults.\n"
+                       "# joystick = centre x, centre y, drag radius, stick deadzone (0-127)\n"
+                       "joystick = %d %d %d %d\n", s_joy_x, s_joy_y, s_joy_r, s_deadzone);
+            for (i = 0; i < V_NBUTTONS; i++)
+                fprintf(f, "%s = %d %d\n", s_vbtn[i].name, s_vbtn[i].x, s_vbtn[i].y);
+            fclose(f);
+            LOGI("controls: wrote defaults to %s", path);
+        }
+        return;
+    }
+    while (fgets(line, sizeof(line), f)) {
+        int r, dz;
+        if (line[0] == '#')
+            continue;
+        if (sscanf(line, " joystick = %d %d %d %d", &x, &y, &r, &dz) == 4) {
+            s_joy_x = x; s_joy_y = y; s_joy_r = r; s_deadzone = dz;
+            continue;
+        }
+        if (sscanf(line, " %31[a-z] = %d %d", name, &x, &y) == 3)
+            for (i = 0; i < V_NBUTTONS; i++)
+                if (!strcmp(name, s_vbtn[i].name)) {
+                    s_vbtn[i].x = x;
+                    s_vbtn[i].y = y;
+                }
+    }
+    fclose(f);
+    LOGI("controls: loaded %s", path);
+}
+
+static void add_touch(sf_input *in, int id, int x, int y)
+{
+    if (in->touch_count < SF_MAX_TOUCH) {
+        in->touch[in->touch_count].id = id;
+        in->touch[in->touch_count].x = x;
+        in->touch[in->touch_count].y = y;
+        in->touch_count++;
+    }
+}
+
+/* The joystick touch goes down at the centre and is then dragged, so the
+ * game sees a press followed by motion, as from a finger. */
+static void add_virtual_touches(sf_input *in)
+{
+    static int loaded, joy_down;
+    int dx = in->lx, dy = in->ly, i;
+
+    if (!loaded) {
+        load_controls();
+        loaded = 1;
+    }
+    if (dx * dx + dy * dy < s_deadzone * s_deadzone)
+        dx = dy = 0;
+    if (in->buttons & SF_BTN_LEFT)  dx = -127;
+    if (in->buttons & SF_BTN_RIGHT) dx = 127;
+    if (in->buttons & SF_BTN_UP)    dy = -127;
+    if (in->buttons & SF_BTN_DOWN)  dy = 127;
+    if (dx || dy) {
+        if (joy_down)
+            add_touch(in, VPAD_ID, s_joy_x + dx * s_joy_r / 127, s_joy_y + dy * s_joy_r / 127);
+        else
+            add_touch(in, VPAD_ID, s_joy_x, s_joy_y);
+        joy_down = 1;
+    } else {
+        joy_down = 0;
+    }
+    for (i = 0; i < V_NBUTTONS; i++)
+        if (in->buttons & s_vbtn[i].btn)
+            add_touch(in, VPAD_ID + 1 + i, s_vbtn[i].x, s_vbtn[i].y);
+}
 
 void sf_input_poll(void)
 {
@@ -51,6 +150,7 @@ void sf_input_poll(void)
 
     memset(&in, 0, sizeof(in));
     sf_plat_input(&in);
+    add_virtual_touches(&in);
 
     /* touch releases */
     for (i = 0; i < s_prev.touch_count; i++) {

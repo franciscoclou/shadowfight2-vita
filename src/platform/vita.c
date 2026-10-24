@@ -187,14 +187,17 @@ void sf_plat_input(sf_input *out)
         inited = 1;
     }
     memset(out, 0, sizeof(*out));
-    if (sceCtrlPeekBufferPositive(0, &pad, 1) > 0)
+    if (sceCtrlPeekBufferPositive(0, &pad, 1) > 0) {
         for (i = 0; i < sizeof(map) / sizeof(map[0]); i++)
             if (pad.buttons & map[i].sce)
                 out->buttons |= map[i].sf;
+        out->lx = (int)pad.lx - 128;
+        out->ly = (int)pad.ly - 128;
+    }
 
     /* The front panel reports 1920x1088; the surface is 960x544. */
     if (sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1) > 0) {
-        for (i = 0; i < touch.reportNum && i < SF_MAX_TOUCH; i++) {
+        for (i = 0; i < touch.reportNum && i < SF_MAX_TOUCH / 2; i++) {
             out->touch[i].id = touch.report[i].id;
             out->touch[i].x = touch.report[i].x / 2;
             out->touch[i].y = touch.report[i].y / 2;

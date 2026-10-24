@@ -42,9 +42,10 @@ void sf_plat_audio_start(int rate, sf_audio_fill fill);
 
 /* Input, sampled once per s3eDeviceYield. Coordinates are in surface
  * pixels. buttons uses the SF_BTN_* bits. */
-#define SF_MAX_TOUCH 6
+#define SF_MAX_TOUCH 12
 typedef struct sf_input {
     uint32_t buttons;
+    int lx, ly;              /* left stick, -128..127, 0 = centred */
     int touch_count;
     struct { int id, x, y; } touch[SF_MAX_TOUCH];
 } sf_input;
