@@ -55,15 +55,18 @@ static const struct { uint32_t btn; int key; } s_keymap[] = {
 #define VPAD_ID 200
 #define CONTROLS_VERSION 2
 
+/* punch, kick and the joystick are measured from the tutorial dojo's HUD
+ * on the harness; ranged, magic and pause are estimates (those controls
+ * only appear later). */
 enum { V_PUNCH, V_KICK, V_RANGED, V_MAGIC, V_PAUSE, V_NBUTTONS };
 static struct { const char *name; uint32_t btn; int x, y; } s_vbtn[V_NBUTTONS] = {
-    { "punch",  SF_BTN_SQUARE,   905, 385 },
-    { "kick",   SF_BTN_CROSS,    850, 470 },
+    { "punch",  SF_BTN_SQUARE,   883, 385 },
+    { "kick",   SF_BTN_CROSS,    800, 467 },
     { "ranged", SF_BTN_TRIANGLE, 905, 280 },
     { "magic",  SF_BTN_CIRCLE,   790, 300 },
     { "pause",  SF_BTN_START,    480,  40 },
 };
-static int s_joy_x = 125, s_joy_y = 420, s_joy_r = 60, s_deadzone = 40;
+static int s_joy_x = 137, s_joy_y = 405, s_joy_r = 65, s_deadzone = 40;
 static int s_touch_controls;   /* draw the on-screen fight controls */
 
 static void ensure_controls(void);
