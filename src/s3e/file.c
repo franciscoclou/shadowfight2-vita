@@ -158,14 +158,14 @@ static sf_file *sf_s3eFileOpen(const char *name, const char *mode)
         FILE *fp = fopen(path, m);
         if (!fp) {
             s_err = S3E_FILE_ERR_NOT_FOUND;
-            LOGI("s3eFileOpen(%s, %s) -> not found (%s)", name, mode, path);
+            LOGV("s3eFileOpen(%s, %s) -> not found (%s)", name, mode, path);
             return NULL;
         }
         f = calloc(1, sizeof(*f));
         f->kind = 1;
         f->fp = fp;
     }
-    LOGI("s3eFileOpen(%s, %s) -> %s", name, mode, path);
+    LOGV("s3eFileOpen(%s, %s) -> %s", name, mode, path);
     return f;
 }
 

@@ -295,7 +295,7 @@ static const char *cfg_get(const char *sec, const char *key)
 static int32_t sf_s3eConfigGetString(const char *sec, const char *key, char *out)
 {
     const char *v = sec && key ? cfg_get(sec, key) : NULL;
-    LOGI("s3eConfigGetString([%s] %s) = %s", sec ? sec : "", key ? key : "", v ? v : "(none)");
+    LOGV("s3eConfigGetString([%s] %s) = %s", sec ? sec : "", key ? key : "", v ? v : "(none)");
     if (!v || !out)
         return S3E_RESULT_ERROR;
     snprintf(out, 128, "%s", v);   /* S3E_CONFIG_STRING_MAX */
@@ -305,7 +305,7 @@ static int32_t sf_s3eConfigGetString(const char *sec, const char *key, char *out
 static int32_t sf_s3eConfigGetInt(const char *sec, const char *key, int32_t *out)
 {
     const char *v = sec && key ? cfg_get(sec, key) : NULL;
-    LOGI("s3eConfigGetInt([%s] %s) = %s", sec ? sec : "", key ? key : "", v ? v : "(none)");
+    LOGV("s3eConfigGetInt([%s] %s) = %s", sec ? sec : "", key ? key : "", v ? v : "(none)");
     if (!v || !out)
         return S3E_RESULT_ERROR;
     *out = (int32_t)strtol(v, NULL, 0);
