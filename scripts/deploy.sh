@@ -28,12 +28,15 @@ cat <<TXT
 
  C) Game data -- once, and again whenever ./scripts/prepare_game.sh
     changes what it produces (the decompressed .s3e and the
-    game's assets/ tree, ~90 MB):
+    game's assets/ tree, ~90 MB). Existing files are overwritten.
+    ram/ is skipped: it holds the save data the PC harness wrote.
 
-    (cd game_out && find . -type f) | while read -r f; do
-      curl -s --ftp-create-dirs -T "game_out/\${f#./}" \\
-           "$FTP_URL/$VITA_DATA_DIR/\${f#./}"
-    done
+    cd "$GAME_OUT" && find . -path ./ram -prune -o -type f -print |
+      while read -r f; do
+        echo "\${f#./}"
+        curl -sS --ftp-create-dirs -T "\$f" "$FTP_URL/$VITA_DATA_DIR/\${f#./}" ||
+          echo "!! failed: \$f"
+      done; cd - >/dev/null
 
  Prerequisites on the Vita (once): kubridge.skprx in ux0:tai/config.txt
  under *KERNEL, and ur0:data/libshacccg.suprx extracted.
