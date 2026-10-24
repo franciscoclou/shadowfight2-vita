@@ -102,13 +102,52 @@ Derbh spells paths Windows-style: `rom:\\assets\files.dz`.
   13 LockRelease, 14 SemCreate(count), 16 SemWait(sem, ms), 17 SemPost.
   Without it the first std::mutex throws `__concurrence_lock_error`.
 - **s3eWindow** `0xd31aa8a8`, 72 bytes: not requested at boot.
-- `0x502bcf80` (8 bytes), **s3eDialog**: answered "unavailable"; the game
-  logs an assert and continues.
+- **s3eDeviceUniqueID** `0x91a0de04`, 4 bytes: slot 0 `Get() -> const char *`.
+  Wrappers at 0x4a23b5e4 (available?) and 0x4a23b650 (call). Required:
+  see "Anti-tamper" below.
+- **s3eDialog** `0xa6c1a5c0`, 28 bytes (loaders 0x4a001198..0x4a001384):
+  answered "unavailable"; the game logs an assert and continues.
+- `0x502bcf80` (8 bytes) is **s3eFBAnalytics**, `0xda590ec5` (4 bytes)
+  **s3eGetSimOperator**: unavailable, harmless.
+
+Extension names come from the `error loading extension: <name>` string
+each loader passes to `s3eDebugAssertShow` next to its `movw/movt` hash.
+
+## Anti-tamper: empty device ID = "Hack error"
+
+The game writes its own log to `ram://logs/<date>.log`. Read it first when
+the game stalls.
+
+- 0x4a1ca390 classifies `s3eDeviceGetString(2)` (S3E_DEVICE_ID): "Windows
+  Simulator", "Windows", "OSX", "Windows Desktop" set the **desktop** flag
+  (byte 0x4a8fa441, accessor 0x4a1c7510).
+- 0x4a69df90 (users loader) builds the device identifier with 0x4a69d984,
+  which on a fresh install takes it from s3eDeviceUniqueID via 0x4a1c8738.
+  If the identifier is empty and the device is not a desktop, it sets the
+  **hack** flag (byte 0x4a90cb2a, accessor 0x4a6aee00).
+- With the hack flag set, 0x4a69fa30 calls the handler 0x4a25e7b0, which
+  logs `Hack error: user.xml`, deletes the save and resets; the title
+  screen never advances. Providing s3eDeviceUniqueID fixes it.
+- 0x4a1d4f04 makes the online GUID only on Windows/OSX/Bada/iOS (OS ids
+  3, 13, 18, 14). On Android (19) it logs `Unsupported device! GUID isn't
+  generated!`, which is expected and harmless.
+
+## s3eCompression (libs3e_android.so)
+
+`DecompInit(type, read_cb, ud)` -> handle 1..4 (max 4 open), 0 on error.
+Types: 0 auto, 1 stored, 2 zlib, 3 gzip, 4 LZMA-alone. Auto reads 2 bytes:
+gzip magic, else a valid zlib header, else (13 bytes) an LZMA header with
+props <= 0xe1, dict <= 0x900000 and zero size bytes 9..12, else stored.
+`read_cb` is an s3e callback: `cb(&{void *buf, int32 len}, ud)` returns
+the bytes supplied, fewer than `len` at the end. `DecompRead(h, buf,
+&len)` returns 0 with `*len` set, or 1 when nothing was produced.
+`DecompFinal(h)` frees the handle.
 
 ## Boot milestones on the qemu harness
 
 1. `_IwMain`, config reads, s3eThread.
 2. EGL: the game picks config 3 (RGB565/D16) from `eglGetConfigs`,
    creates a GLES2 context, looks up OES extensions.
-3. First `eglSwapBuffers`, then the splash screen (logo on parchment),
-   rendered continuously for 300+ frames.
+3. First `eglSwapBuffers`, then the splash screen (logo on parchment).
+   Without s3eDeviceUniqueID it stays there forever ("Hack error").
+4. With it: the Personal data consent screen ("I AGREE" at 480,493).

@@ -1,6 +1,6 @@
-/* s3eDevice, s3eTimer, s3eDebug, s3eConfig, s3eSurface, s3eGL, s3eExt and
- * s3eCompression. Enum values come from Marmalade's own headers (preserved
- * in preprocessed .ii files of open-source extensions) or from decompiling
+/* s3eDevice, s3eTimer, s3eDebug, s3eConfig, s3eSurface, s3eGL and s3eExt.
+ * Enum values come from Marmalade's own headers (preserved in preprocessed
+ * .ii files of open-source extensions) or from decompiling
  * libs3e_android.so with REA; see docs/RE_NOTES.md.
  */
 #include "s3e/s3e_internal.h"
@@ -397,7 +397,7 @@ static void *sf_s3eGLGetNativeWindow(void)
 static int32_t sf_s3eGLRegister(uint32_t id, s3eCallback fn, void *ud) { return S3E_RESULT_SUCCESS; }
 static int32_t sf_s3eGLUnRegister(uint32_t id, s3eCallback fn) { return S3E_RESULT_SUCCESS; }
 
-/* --- extensions and compression --------------------------------------- */
+/* --- extensions ------------------------------------------------------- */
 
 /* Every Marmalade extension (billing, Facebook, AppsFlyer, ...) asks for its
  * function table here. Answering "not found" makes each one report itself
@@ -430,19 +430,6 @@ static int32_t sf_s3eExtGetHash(uint32_t hash, void *table, uint32_t size)
         memset(table, 0, size);
     return S3E_RESULT_ERROR;
 }
-
-static void *sf_s3eCompressionDecompInit(uint32_t type, void *read_cb, void *ud)
-{
-    LOGW("s3eCompressionDecompInit(type %u) unsupported", (unsigned)type);
-    return NULL;
-}
-static int32_t sf_s3eCompressionDecompRead(void *ctx, void *buf, uint32_t *len)
-{
-    if (len)
-        *len = 0;
-    return S3E_RESULT_ERROR;
-}
-static int32_t sf_s3eCompressionDecompFinal(void *ctx) { return S3E_RESULT_ERROR; }
 
 const sf_export sf_exports_device[] = {
     { "s3eTimerGetMs", (void *)sf_s3eTimerGetMs },
@@ -483,8 +470,5 @@ const sf_export sf_exports_device[] = {
     { "s3eGLRegister", (void *)sf_s3eGLRegister },
     { "s3eGLUnRegister", (void *)sf_s3eGLUnRegister },
     { "s3eExtGetHash", (void *)sf_s3eExtGetHash },
-    { "s3eCompressionDecompInit", (void *)sf_s3eCompressionDecompInit },
-    { "s3eCompressionDecompRead", (void *)sf_s3eCompressionDecompRead },
-    { "s3eCompressionDecompFinal", (void *)sf_s3eCompressionDecompFinal },
     { NULL, NULL }
 };

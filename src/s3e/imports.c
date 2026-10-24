@@ -58,13 +58,13 @@ void *sf_import_stub(int index, const char *name)
 
 extern const sf_export sf_exports_device[], sf_exports_memory[], sf_exports_file[],
                        sf_exports_input[], sf_exports_sound[], sf_exports_net[],
-                       sf_exports_gl[];
+                       sf_exports_gl[], sf_exports_compress[];
 
 void *sf_import_resolve(const char *name)
 {
     const sf_export *tables[] = {
         sf_exports_device, sf_exports_memory, sf_exports_file, sf_exports_input,
-        sf_exports_sound, sf_exports_net, sf_exports_gl,
+        sf_exports_sound, sf_exports_net, sf_exports_gl, sf_exports_compress,
     };
     unsigned t;
     const sf_export *e;
