@@ -92,6 +92,11 @@ target_link_libraries(${PROJECT_NAME}
 
 vita_create_self(eboot.bin ${PROJECT_NAME} UNSAFE)
 
+# ATTRIBUTE2=12 unlocks the extended memory budget. The 200 MB newlib heap
+# (src/main.c) plus the game image and vitaGL's pools do not fit in the
+# default one: newlib's heap block fails and the app exits at boot.
+set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -d ATTRIBUTE2=12")
+
 vita_create_vpk(ShadowFight2.vpk ${VITA_TITLEID} eboot.bin
   VERSION ${VITA_VERSION}
   NAME ${VITA_APP_NAME}
