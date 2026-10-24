@@ -124,7 +124,17 @@ static void make_parents(const char *path)
 
 /* --- open/close -------------------------------------------------------- */
 
+static sf_file *sf_s3eFileOpen_(const char *name, const char *mode);
+
 static sf_file *sf_s3eFileOpen(const char *name, const char *mode)
+{
+    uint64_t t0 = sf_plat_time_us();
+    sf_file *f = sf_s3eFileOpen_(name, mode);
+    sf_prof_add(SF_PROF_FOPEN, sf_plat_time_us() - t0, 0);
+    return f;
+}
+
+static sf_file *sf_s3eFileOpen_(const char *name, const char *mode)
 {
     char path[512];
     sf_file *f;
@@ -161,6 +171,11 @@ static sf_file *sf_s3eFileOpen(const char *name, const char *mode)
             LOGV("s3eFileOpen(%s, %s) -> not found (%s)", name, mode, path);
             return NULL;
         }
+        /* newlib's default buffer is tiny and Derbh reads its archives in
+         * small pieces between seeks; one read call per piece is slow on
+         * a memory card. */
+        if (!is_writable_mode(mode))
+            setvbuf(fp, NULL, _IOFBF, 64 * 1024);
         f = calloc(1, sizeof(*f));
         f->kind = 1;
         f->fp = fp;
@@ -205,10 +220,13 @@ static uint32_t sf_s3eFileRead(void *buf, uint32_t size, uint32_t count, sf_file
     if (!f || !buf || !size)
         return 0;
     switch (f->kind) {
-    case 1:
+    case 1: {
+        uint64_t t0 = sf_plat_time_us();
         n = (uint32_t)fread(buf, size, count, f->fp);
+        sf_prof_add(SF_PROF_FREAD, sf_plat_time_us() - t0, n * size);
         f->eof = n < count;
         return n;
+    }
     case 2:
         return f->ufs->read(buf, size, count, f->uh);
     default: {

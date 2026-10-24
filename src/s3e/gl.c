@@ -59,6 +59,34 @@ WRAP(glLightModelf,   (GLenum a, F b), (a, b), (GLenum, F))
 WRAP(glMultiTexCoord4f, (GLenum a, F b, F c, F d, F e), (a, b, c, d, e), (GLenum, F, F, F, F))
 #undef F
 
+/* --- timed wrappers: shader builds and texture uploads, for prof.c ----- */
+
+#define TIMED(n, cat, params, args, types)                             \
+    static void t_##n params                                           \
+    {                                                                  \
+        static void (*fn) types;                                       \
+        static int looked;                                             \
+        uint64_t t0;                                                   \
+        if (!looked) { fn = (void (*) types)gl_proc(#n); looked = 1; } \
+        if (!fn) return;                                               \
+        t0 = sf_plat_time_us();                                        \
+        fn args;                                                       \
+        sf_prof_add(cat, sf_plat_time_us() - t0, 0);                   \
+    }
+typedef unsigned int GLuint;
+typedef int GLsizei;
+TIMED(glCompileShader, SF_PROF_SHADER, (GLuint s), (s), (GLuint))
+TIMED(glLinkProgram, SF_PROF_LINK, (GLuint p), (p), (GLuint))
+TIMED(glTexImage2D, SF_PROF_TEXTURE,
+      (GLenum t, GLint l, GLint fi, GLsizei w, GLsizei h, GLint b, GLenum f, GLenum ty, const void *d),
+      (t, l, fi, w, h, b, f, ty, d), (GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *))
+TIMED(glTexSubImage2D, SF_PROF_TEXTURE,
+      (GLenum t, GLint l, GLint x, GLint y, GLsizei w, GLsizei h, GLenum f, GLenum ty, const void *d),
+      (t, l, x, y, w, h, f, ty, d), (GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const void *))
+TIMED(glCompressedTexImage2D, SF_PROF_TEXTURE,
+      (GLenum t, GLint l, GLenum fi, GLsizei w, GLsizei h, GLint b, GLsizei sz, const void *d),
+      (t, l, fi, w, h, b, sz, d), (GLenum, GLint, GLenum, GLsizei, GLsizei, GLint, GLsizei, const void *))
+
 /* --- EGL --------------------------------------------------------------- */
 
 typedef int32_t EGLint;
@@ -245,6 +273,7 @@ static unsigned sf_eglSwapBuffers(EGLDisplay d, EGLSurface s)
 {
     static unsigned frames;
     sf_plat_swap();
+    sf_prof_frame();
     if (frames++ == 0)
         LOGI("first eglSwapBuffers");
     return 1;
@@ -277,6 +306,12 @@ const sf_export sf_exports_gl[] = {
     { "glLightf", (void *)w_glLightf },
     { "glLightModelf", (void *)w_glLightModelf },
     { "glMultiTexCoord4f", (void *)w_glMultiTexCoord4f },
+
+    { "glCompileShader", (void *)t_glCompileShader },
+    { "glLinkProgram", (void *)t_glLinkProgram },
+    { "glTexImage2D", (void *)t_glTexImage2D },
+    { "glTexSubImage2D", (void *)t_glTexSubImage2D },
+    { "glCompressedTexImage2D", (void *)t_glCompressedTexImage2D },
 
     { "eglGetDisplay", (void *)sf_eglGetDisplay },
     { "eglInitialize", (void *)sf_eglInitialize },
