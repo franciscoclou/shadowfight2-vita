@@ -24,6 +24,10 @@ cp -r "$APK_DIR/assets/assets" "$GAME_OUT/assets"
 # Android variant under its source name.
 cp "$APK_DIR/assets/app_android.icf" "$GAME_OUT/app.icf"
 
+# Copies of the fight HUD atlases without the control graphics, used when
+# the on-screen controls are hidden (controls.txt: touch_controls = 0).
+python3 -I "$REPO_ROOT/scripts/make_hidden_hud.py" "$GAME_OUT"
+
 echo
 echo ">> game_out/ is $(du -sh "$GAME_OUT" | cut -f1)"
 echo ">> deploy it with option (C) from ./scripts/deploy.sh"

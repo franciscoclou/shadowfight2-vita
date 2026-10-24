@@ -56,6 +56,7 @@ void *sf_file_load(const char *name, uint32_t *size);
 void sf_sound_poll(void);   /* main thread: deliver queued audio callbacks */
 
 /* --- input.c --- */
+int  sf_touch_controls_shown(void);
 void sf_input_poll(void);
 
 /* --- gl.c --- */

@@ -44,54 +44,99 @@ static int find_touch(const sf_input *in, int id)
     return -1;
 }
 
-/* Vita buttons -> s3eKey codes (s3eKeyboard.h): Back 210 (Android back),
- * Menu 211. The others drive virtual touches instead. */
+/* Vita buttons -> s3eKey codes (s3eKeyboard.h): L is Back 210 (Android
+ * back, closes dialogs). The others drive virtual touches instead. */
 static const struct { uint32_t btn; int key; } s_keymap[] = {
-    { SF_BTN_CIRCLE, 210 }, { SF_BTN_START, 211 },
+    { SF_BTN_L, 210 },
 };
 
 /* --- virtual touches ------------------------------------------------------ */
 
 #define VPAD_ID 200
+#define CONTROLS_VERSION 2
 
-enum { V_PUNCH, V_KICK, V_RANGED, V_MAGIC, V_NBUTTONS };
+enum { V_PUNCH, V_KICK, V_RANGED, V_MAGIC, V_PAUSE, V_NBUTTONS };
 static struct { const char *name; uint32_t btn; int x, y; } s_vbtn[V_NBUTTONS] = {
-    { "punch",  SF_BTN_SQUARE,   850, 470 },
-    { "kick",   SF_BTN_CROSS,    905, 385 },
+    { "punch",  SF_BTN_SQUARE,   905, 385 },
+    { "kick",   SF_BTN_CROSS,    850, 470 },
     { "ranged", SF_BTN_TRIANGLE, 905, 280 },
-    { "magic",  SF_BTN_R,        790, 300 },
+    { "magic",  SF_BTN_CIRCLE,   790, 300 },
+    { "pause",  SF_BTN_START,    480,  40 },
 };
 static int s_joy_x = 125, s_joy_y = 420, s_joy_r = 60, s_deadzone = 40;
+static int s_touch_controls;   /* draw the on-screen fight controls */
 
+static void ensure_controls(void);
+
+int sf_touch_controls_shown(void)
+{
+    ensure_controls();
+    return s_touch_controls;
+}
+
+static void controls_path(char *path, size_t n)
+{
+    snprintf(path, n, "%s/controls.txt", sf_data_dir);
+}
+
+static void save_controls(void)
+{
+    char path[300];
+    FILE *f;
+    int i;
+
+    controls_path(path, sizeof(path));
+    if (!(f = fopen(path, "w")))
+        return;
+    fprintf(f, "# Shadow Fight 2 controls: screen points (960x544) the Vita\n"
+               "# buttons press. Delete this file to restore the defaults.\n"
+               "version = %d\n"
+               "# 1 shows the on-screen fight controls, 0 hides them (the magic\n"
+               "# and ranged meters stay). SELECT toggles it; restart to apply.\n"
+               "touch_controls = %d\n"
+               "# joystick = centre x, centre y, drag radius, stick deadzone (0-127)\n"
+               "joystick = %d %d %d %d\n",
+            CONTROLS_VERSION, s_touch_controls, s_joy_x, s_joy_y, s_joy_r, s_deadzone);
+    for (i = 0; i < V_NBUTTONS; i++)
+        fprintf(f, "%s = %d %d\n", s_vbtn[i].name, s_vbtn[i].x, s_vbtn[i].y);
+    fclose(f);
+}
+
+/* Reads controls.txt. A missing file, or one from before the current
+ * layout version, is replaced with the defaults. */
 static void load_controls(void)
 {
     char path[300], line[128], name[32];
     FILE *f;
-    int i, x, y;
+    int i, x, y, version = 0;
 
-    snprintf(path, sizeof(path), "%s/controls.txt", sf_data_dir);
-    if (!(f = fopen(path, "r"))) {
-        if ((f = fopen(path, "w"))) {
-            fprintf(f, "# Shadow Fight 2 controls: screen points (960x544) the Vita\n"
-                       "# buttons press. Delete this file to restore the defaults.\n"
-                       "# joystick = centre x, centre y, drag radius, stick deadzone (0-127)\n"
-                       "joystick = %d %d %d %d\n", s_joy_x, s_joy_y, s_joy_r, s_deadzone);
-            for (i = 0; i < V_NBUTTONS; i++)
-                fprintf(f, "%s = %d %d\n", s_vbtn[i].name, s_vbtn[i].x, s_vbtn[i].y);
+    controls_path(path, sizeof(path));
+    if ((f = fopen(path, "r"))) {
+        while (fgets(line, sizeof(line), f))
+            if (sscanf(line, " version = %d", &x) == 1)
+                version = x;
+        rewind(f);
+    }
+    if (!f || version < CONTROLS_VERSION) {
+        if (f)
             fclose(f);
-            LOGI("controls: wrote defaults to %s", path);
-        }
+        save_controls();
+        LOGI("controls: wrote defaults to %s", path);
         return;
     }
     while (fgets(line, sizeof(line), f)) {
         int r, dz;
         if (line[0] == '#')
             continue;
+        if (sscanf(line, " touch_controls = %d", &x) == 1) {
+            s_touch_controls = x != 0;
+            continue;
+        }
         if (sscanf(line, " joystick = %d %d %d %d", &x, &y, &r, &dz) == 4) {
             s_joy_x = x; s_joy_y = y; s_joy_r = r; s_deadzone = dz;
             continue;
         }
-        if (sscanf(line, " %31[a-z] = %d %d", name, &x, &y) == 3)
+        if (sscanf(line, " %31[a-z_] = %d %d", name, &x, &y) == 3)
             for (i = 0; i < V_NBUTTONS; i++)
                 if (!strcmp(name, s_vbtn[i].name)) {
                     s_vbtn[i].x = x;
@@ -99,7 +144,18 @@ static void load_controls(void)
                 }
     }
     fclose(f);
-    LOGI("controls: loaded %s", path);
+    LOGI("controls: loaded %s (touch controls %s)", path, s_touch_controls ? "shown" : "hidden");
+}
+
+/* Loaded on first use: s3eFileOpen asks whether to hide the controls'
+ * textures before the first input poll. */
+static void ensure_controls(void)
+{
+    static int loaded;
+    if (!loaded) {
+        loaded = 1;
+        load_controls();
+    }
 }
 
 static void add_touch(sf_input *in, int id, int x, int y)
@@ -116,13 +172,10 @@ static void add_touch(sf_input *in, int id, int x, int y)
  * game sees a press followed by motion, as from a finger. */
 static void add_virtual_touches(sf_input *in)
 {
-    static int loaded, joy_down;
+    static int joy_down;
     int dx = in->lx, dy = in->ly, i;
 
-    if (!loaded) {
-        load_controls();
-        loaded = 1;
-    }
+    ensure_controls();
     if (dx * dx + dy * dy < s_deadzone * s_deadzone)
         dx = dy = 0;
     if (in->buttons & SF_BTN_LEFT)  dx = -127;
@@ -151,6 +204,12 @@ void sf_input_poll(void)
     memset(&in, 0, sizeof(in));
     sf_plat_input(&in);
     add_virtual_touches(&in);
+    if ((in.buttons & SF_BTN_SELECT) && !(s_prev.buttons & SF_BTN_SELECT)) {
+        s_touch_controls = !s_touch_controls;
+        save_controls();
+        LOGI("controls: touch controls %s from the next launch",
+             s_touch_controls ? "shown" : "hidden");
+    }
 
     /* touch releases */
     for (i = 0; i < s_prev.touch_count; i++) {

@@ -126,6 +126,39 @@ static void make_parents(const char *path)
 
 static sf_file *sf_s3eFileOpen_(const char *name, const char *mode);
 
+/* With the on-screen fight controls hidden, their two texture atlases are
+ * served from <data>/hud_hidden/ instead: copies with the button discs and
+ * the joystick erased, but the pause button and the magic/ranged meters
+ * kept (scripts/make_hidden_hud.py). Touch input is unaffected. */
+static const char *const s_hud_atlases[] = {
+    "/textures/buttons/fight/batchButtonsFight.png",
+    "/textures/joystick/batchJoystick.png",
+};
+
+static int hud_redirect(const char *name, char *out, size_t n)
+{
+    char norm[400], *p, *assets;
+    size_t len, i;
+    struct stat st;
+
+    snprintf(norm, sizeof(norm), "%s", name);
+    for (p = norm; *p; p++)
+        if (*p == '\\')
+            *p = '/';
+    len = strlen(norm);
+    for (i = 0; i < sizeof(s_hud_atlases) / sizeof(s_hud_atlases[0]); i++) {
+        size_t al = strlen(s_hud_atlases[i]);
+        if (len > al && !strcmp(norm + len - al, s_hud_atlases[i]))
+            break;
+    }
+    if (i == sizeof(s_hud_atlases) / sizeof(s_hud_atlases[0]) || sf_touch_controls_shown())
+        return 0;
+    if (!(assets = strstr(norm, "assets/")))
+        return 0;
+    snprintf(out, n, "%s/hud_hidden/%s", sf_data_dir, assets);
+    return stat(out, &st) == 0;
+}
+
 static sf_file *sf_s3eFileOpen(const char *name, const char *mode)
 {
     uint64_t t0 = sf_plat_time_us();
@@ -159,7 +192,8 @@ static sf_file *sf_s3eFileOpen_(const char *name, const char *mode)
         }
     }
 
-    resolve(name, path, sizeof(path), is_writable_mode(mode));
+    if (is_writable_mode(mode) || !hud_redirect(name, path, sizeof(path)))
+        resolve(name, path, sizeof(path), is_writable_mode(mode));
     if (is_writable_mode(mode))
         make_parents(path);
     {
