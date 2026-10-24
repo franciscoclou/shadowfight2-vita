@@ -14,5 +14,11 @@ SRC = $(wildcard $(ROOT)/src/s3e/*.c) $(ROOT)/src/loader/s3e_loader.c \
 harness: $(SRC) $(wildcard $(ROOT)/src/*/*.h)
 	$(CC) $(CFLAGS) -o $@ $(SRC) $(LDFLAGS) $(LIBS)
 
+test_compress: test_compress.c $(ROOT)/src/s3e/compress.c
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lz
+
+test: test_compress
+	qemu-arm -L /usr/arm-linux-gnueabihf ./test_compress
+
 clean:
-	rm -f harness
+	rm -f harness test_compress

@@ -43,3 +43,4 @@ compile_commands.json
 *.a
 .DS_Store
 CLAUDE.md
+tests/harness/test_compress

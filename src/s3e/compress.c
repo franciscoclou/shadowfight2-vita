@@ -87,15 +87,8 @@ static int32_t sf_s3eCompressionDecompInit(uint32_t type, s3eCallback read_cb, v
         type = (uint32_t)sniff(s->z.next_in, s->z.avail_in);
     s->type = (int)type;
 
-    /* zlib streams are inflated raw, past their 2-byte header: the
-     * game's data carries Adler-32 trailers that do not match, and
-     * Marmalade's own inflater does not check them. */
-    if (type == T_ZLIB && s->z.avail_in >= 2) {
-        s->z.next_in += 2;
-        s->z.avail_in -= 2;
-    }
     if (type == T_ZLIB || type == T_GZIP) {
-        if (inflateInit2(&s->z, type == T_GZIP ? 16 + MAX_WBITS : -MAX_WBITS) != Z_OK) {
+        if (inflateInit2(&s->z, type == T_GZIP ? 16 + MAX_WBITS : MAX_WBITS) != Z_OK) {
             free(s);
             return 0;
         }
@@ -140,6 +133,12 @@ static int32_t sf_s3eCompressionDecompRead(int32_t h, void *buf, int32_t *len)
                 break;
             }
             r = inflate(&s->z, Z_NO_FLUSH);
+            /* The game's zlib and gzip data carries trailers that do not
+             * match (Adler-32 / CRC-32 / length), and Marmalade does not
+             * check them. zlib verifies the trailer only after producing
+             * all the output, so a check failure is simply the end. */
+            if (r == Z_DATA_ERROR && s->z.msg && strstr(s->z.msg, "check"))
+                r = Z_STREAM_END;
             if (r == Z_STREAM_END)
                 s->done = 1;
             else if (r != Z_OK && r != Z_BUF_ERROR) {
