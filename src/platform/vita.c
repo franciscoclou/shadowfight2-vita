@@ -3,7 +3,9 @@
 #include "platform/log.h"
 
 #include <kubridge.h>
+#include <psp2/common_dialog.h>
 #include <psp2/ctrl.h>
+#include <psp2/message_dialog.h>
 #include <psp2/kernel/sysmem.h>
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/kernel/processmgr.h>
@@ -17,6 +19,8 @@
 #endif
 
 char sf_data_dir[256] = "ux0:data/shadowfight2";
+
+static int s_gl_inited;
 
 static SceUID alloc_at(const char *name, SceKernelMemBlockType type, uintptr_t addr, uint32_t size)
 {
@@ -65,6 +69,35 @@ void sf_plat_gl_init(int width, int height)
      * threshold leaves the rest of main memory to the game's heap. */
     vglSetupRuntimeShaderCompiler(SHARK_OPT_UNSAFE, SHARK_ENABLE, SHARK_ENABLE, SHARK_ENABLE);
     vglInitExtended(0x100000, width, height, 0x1000000, SCE_GXM_MULTISAMPLE_NONE);
+    s_gl_inited = 1;
+}
+
+/* Show msg in a system dialog and wait for the user to dismiss it. The
+ * dialog draws over a GXM display, so vitaGL comes up first if the game
+ * has not started it yet. Only the main thread calls this, before the game
+ * thread runs. */
+void sf_vita_show_error(const char *msg)
+{
+    SceMsgDialogUserMessageParam user;
+    SceMsgDialogParam param;
+
+    if (!s_gl_inited) {
+        vglInitExtended(0, 960, 544, 0x100000, SCE_GXM_MULTISAMPLE_NONE);
+        s_gl_inited = 1;
+    }
+    memset(&user, 0, sizeof(user));
+    user.buttonType = SCE_MSG_DIALOG_BUTTON_TYPE_OK;
+    user.msg = (const SceChar8 *)msg;
+    sceMsgDialogParamInit(&param);
+    param.mode = SCE_MSG_DIALOG_MODE_USER_MSG;
+    param.userMsgParam = &user;
+    if (sceMsgDialogInit(&param) < 0)
+        return;
+    while (sceMsgDialogGetStatus() != SCE_COMMON_DIALOG_STATUS_FINISHED) {
+        glClear(GL_COLOR_BUFFER_BIT);
+        vglSwapBuffers(GL_TRUE);
+    }
+    sceMsgDialogTerm();
 }
 
 void sf_plat_swap(void)
