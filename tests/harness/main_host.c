@@ -66,6 +66,11 @@ int main(int argc, char **argv)
 {
     struct sigaction sa;
     char path[300];
+    /* The Vita maps the image at 0x98000000, not its link base, so load
+     * there by default: a run at the link base never applies a relocation.
+     * SF_LOAD_ADDR=0x4a000000 reproduces the old zero-delta layout. */
+    const char *env_addr = getenv("SF_LOAD_ADDR");
+    uintptr_t load_addr = env_addr ? (uintptr_t)strtoul(env_addr, NULL, 0) : 0x98000000;
 
     s_stack_top = (uintptr_t)&sa;
     if (argc < 2) {
@@ -91,7 +96,7 @@ int main(int argc, char **argv)
 
     sf_device_init(NULL);
     snprintf(path, sizeof(path), "%s/ShadowFight2.s3e.raw", sf_data_dir);
-    if (sf_s3e_load(&sf_game, path, 0x4a000000, sf_import_resolve, sf_import_stub) < 0)
+    if (sf_s3e_load(&sf_game, path, load_addr, sf_import_resolve, sf_import_stub) < 0)
         return 1;
     LOGI("%d imports left unresolved", sf_game.unresolved);
     sf_device_init(sf_game.config);
