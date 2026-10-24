@@ -114,6 +114,11 @@ static int32_t thr_current(void)
     return self ? (int32_t)(intptr_t)self : TID_MAIN;
 }
 
+int sf_thread_is_main(void)
+{
+    return thr_current() == TID_MAIN;
+}
+
 /* 8 and 11: called on a handle by the game's thread class. A thread is
  * joined (always safe for an object being torn down) and its slot freed;
  * a lock or semaphore, should one ever arrive here, is destroyed. */

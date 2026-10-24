@@ -41,6 +41,9 @@ void sf_device_init(const char *embedded_config);
 uint64_t sf_time_ms(void);
 int  sf_quit_requested(void);
 
+/* --- thread.c --- */
+int  sf_thread_is_main(void);
+
 /* --- input.c --- */
 void sf_input_poll(void);
 

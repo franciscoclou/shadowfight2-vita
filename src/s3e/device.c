@@ -87,9 +87,17 @@ static struct { s3eCallback fn; void *ud; } s_dev_cb[32];
 
 int sf_quit_requested(void) { return s_quit; }
 
+/* Marmalade delivers every callback (input, timers) on the main thread.
+ * The game's loader thread yields too; dispatching there would deliver
+ * each touch twice, concurrently, and the second touch-end crashes in
+ * cocos2d's touch dictionary (link 0x4a02f8cc). */
 static int64_t sf_s3eDeviceYield(int32_t ms)
 {
     uint64_t until = sf_time_ms() + (ms > 0 ? (uint32_t)ms : 0);
+    if (!sf_thread_is_main()) {
+        sf_plat_sleep_us(ms > 0 ? (uint32_t)ms * 1000 : 0);
+        return 0;
+    }
     do {
         sf_input_poll();
         run_timers();
