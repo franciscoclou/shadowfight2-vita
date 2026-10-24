@@ -11,6 +11,7 @@
 #include "platform/log.h"
 
 #include <EGL/egl.h>
+#include <pthread.h>
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 
@@ -54,6 +55,29 @@ uint64_t sf_plat_time_us(void)
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
+}
+
+/* No sound device under qemu: mix in real time and throw it away, so the
+ * mixer and MP3 decoder still run against the game. */
+static sf_audio_fill s_audio_fill;
+static int s_audio_rate;
+
+static void *audio_thread(void *arg)
+{
+    static int16_t buf[1024 * 2];
+    for (;;) {
+        s_audio_fill(buf, 1024);
+        usleep((useconds_t)(1024ull * 1000000 / (unsigned)s_audio_rate));
+    }
+    return NULL;
+}
+
+void sf_plat_audio_start(int rate, sf_audio_fill fill)
+{
+    pthread_t th;
+    s_audio_fill = fill;
+    s_audio_rate = rate;
+    pthread_create(&th, NULL, audio_thread, NULL);
 }
 
 const char *sf_plat_device_id(void)

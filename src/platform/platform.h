@@ -35,6 +35,11 @@ void  sf_plat_gl_init(int width, int height);
 void  sf_plat_swap(void);
 void *sf_plat_gl_proc(const char *name);
 
+/* Audio: start a thread that keeps calling fill() for blocks of
+ * interleaved stereo 16-bit frames at the given rate, in real time. */
+typedef void (*sf_audio_fill)(int16_t *out, int frames);
+void sf_plat_audio_start(int rate, sf_audio_fill fill);
+
 /* Input, sampled once per s3eDeviceYield. Coordinates are in surface
  * pixels. buttons uses the SF_BTN_* bits. */
 #define SF_MAX_TOUCH 6

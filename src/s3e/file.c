@@ -452,6 +452,28 @@ static int32_t sf_s3eFileListClose(sf_list *l)
     return S3E_RESULT_SUCCESS;
 }
 
+/* Read a whole game file (any drive or user filesystem) into a malloc'd
+ * buffer, for shims that take a file name, like s3eAudioPlay. */
+void *sf_file_load(const char *name, uint32_t *size)
+{
+    sf_file *f = sf_s3eFileOpen(name, "rb");
+    int32_t n;
+    void *buf = NULL;
+
+    if (!f)
+        return NULL;
+    n = sf_s3eFileGetSize(f);
+    if (n > 0 && (buf = malloc((size_t)n)) != NULL &&
+        sf_s3eFileRead(buf, 1, (uint32_t)n, f) != (uint32_t)n) {
+        free(buf);
+        buf = NULL;
+    }
+    sf_s3eFileClose(f);
+    if (buf && size)
+        *size = (uint32_t)n;
+    return buf;
+}
+
 const sf_export sf_exports_file[] = {
     { "s3eFileOpen", (void *)sf_s3eFileOpen },
     { "s3eFileOpenFromMemory", (void *)sf_s3eFileOpenFromMemory },

@@ -3,6 +3,7 @@
 #include "platform/log.h"
 
 #include <kubridge.h>
+#include <psp2/audioout.h>
 #include <psp2/common_dialog.h>
 #include <psp2/ctrl.h>
 #include <psp2/kernel/openpsid.h>
@@ -80,6 +81,42 @@ const char *sf_plat_device_id(void)
             snprintf(id + i * 2, 3, "%02x", (unsigned char)psid.id[i]);
     }
     return id;
+}
+
+/* sceAudioOutOutput blocks until the previous block has played, so this
+ * thread runs at exactly the output rate. */
+#define AUDIO_GRAIN 1024
+
+static sf_audio_fill s_audio_fill;
+static int s_audio_rate;
+
+static int audio_thread(SceSize args, void *argp)
+{
+    static int16_t buf[2][AUDIO_GRAIN * 2];
+    int port, cur = 0;
+
+    port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, AUDIO_GRAIN, s_audio_rate,
+                               SCE_AUDIO_OUT_MODE_STEREO);
+    if (port < 0) {
+        LOGE("sceAudioOutOpenPort failed: %#x", port);
+        return 0;
+    }
+    for (;;) {
+        s_audio_fill(buf[cur], AUDIO_GRAIN);
+        sceAudioOutOutput(port, buf[cur]);
+        cur ^= 1;
+    }
+    return 0;
+}
+
+void sf_plat_audio_start(int rate, sf_audio_fill fill)
+{
+    SceUID th;
+    s_audio_fill = fill;
+    s_audio_rate = rate;
+    th = sceKernelCreateThread("sf_audio", audio_thread, 0x10000100, 0x10000, 0, 0, NULL);
+    if (th < 0 || sceKernelStartThread(th, 0, NULL) < 0)
+        LOGE("cannot start the audio thread: %#x", th);
 }
 
 void sf_plat_gl_init(int width, int height)

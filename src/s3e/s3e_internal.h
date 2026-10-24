@@ -44,6 +44,12 @@ int  sf_quit_requested(void);
 /* --- thread.c --- */
 int  sf_thread_is_main(void);
 
+/* --- file.c --- */
+void *sf_file_load(const char *name, uint32_t *size);
+
+/* --- sound.c --- */
+void sf_sound_poll(void);   /* main thread: deliver queued audio callbacks */
+
 /* --- input.c --- */
 void sf_input_poll(void);
 
