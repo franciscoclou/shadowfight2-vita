@@ -178,7 +178,12 @@ static const char *sf_s3eDeviceGetString(uint32_t prop)
 {
     switch (prop) {
     case 0:  return "ANDROID";              /* S3E_DEVICE_OS */
-    case 2:  return "PSVita";               /* S3E_DEVICE_ID */
+    /* S3E_DEVICE_ID: the game rates the device by looking this up in
+     * assets/devices.xml (link 0x4a1c8b70). "PSVita" is not listed, which
+     * rated it LOW: 30 fps, particles and effect sequences off, and the
+     * Settings toggle could not go higher. iPhone6,1 (iPhone 5S) is HIGH,
+     * not a tablet, and keeps the 768 asset set (no Resolution="HIGH"). */
+    case 2:  return "iPhone6,1";
     case 8:  return "ARM7";                 /* S3E_DEVICE_ARCHITECTURE */
     case 9:  return "7.4.0";                /* S3E_DEVICE_S3E_VERSION */
     case 13: return "4.4.2";                /* S3E_DEVICE_OS_VERSION */
