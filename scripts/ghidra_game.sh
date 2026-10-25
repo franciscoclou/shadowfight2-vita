@@ -5,6 +5,7 @@
 #
 #   ./scripts/ghidra_game.sh 0x4a7528cc 0x4a753300 ...
 #   ./scripts/ghidra_game.sh xrefs 0x4a7fe374 ...   references to addresses
+#   ./scripts/ghidra_game.sh functions <out.txt>    function list (profiling)
 #
 # Addresses are link-time (base 0x4a000000), as the loader's crash log
 # prints them. For libs3e_android.so use ./scripts/rea.sh instead: REA
@@ -21,6 +22,7 @@ ELF="$REPO_ROOT/ghidra/ShadowFight2.elf"
 mkdir -p "$PROJ"
 SCRIPT=DecompileAt.java
 if [ "${1:-}" = xrefs ]; then SCRIPT=XrefsTo.java; shift; fi
+if [ "${1:-}" = functions ]; then SCRIPT=ListFunctions.java; shift; fi
 
 if [ ! -f "$ELF" ] || [ "$GAME_OUT/ShadowFight2.s3e.raw" -nt "$ELF" ]; then
   python3 -I "$REPO_ROOT/scripts/s3e_info.py" "$GAME_OUT/ShadowFight2.s3e.raw" elf "$ELF"

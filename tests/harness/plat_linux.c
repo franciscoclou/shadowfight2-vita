@@ -9,6 +9,7 @@
 #define _GNU_SOURCE
 #include "platform/platform.h"
 #include "platform/log.h"
+#include "s3e/s3e_internal.h"
 
 #include <EGL/egl.h>
 #include <pthread.h>
@@ -87,9 +88,13 @@ const char *sf_plat_device_id(void)
     return "5f0d5f0d5f0d5f0d5f0d5f0d5f0d5f0d";
 }
 
+/* The main thread runs as fast as qemu allows; other threads really sleep,
+ * or the game's background thread spins in its sleep() loop (link
+ * 0x4a78c6e8, s3eDeviceYield with the remaining ms) and steals the CPU. */
 void sf_plat_sleep_us(uint32_t us)
 {
-    (void)us;   /* the harness runs as fast as qemu allows */
+    if (!sf_thread_is_main())
+        usleep(us);
 }
 
 void sf_plat_gl_init(int width, int height)

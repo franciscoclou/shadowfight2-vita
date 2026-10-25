@@ -14,6 +14,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/syscall.h>
+#include <sys/time.h>
+#include <unistd.h>
 #include <ucontext.h>
 
 static uintptr_t s_stack_top;
@@ -62,6 +65,94 @@ static void on_fault(int sig, siginfo_t *si, void *uc_)
     _exit(128 + sig);
 }
 
+/* --- sampling profiler (SF_PROFILE=1) --------------------------------------
+ * Every millisecond of CPU time, record where the interrupted thread was:
+ * game text goes into a per-instruction histogram (link addresses), host
+ * code into a small hash. Dumped at exit to $SF_OUT/profile.txt as
+ * "count address" lines; scripts/profile_report.py folds them into
+ * functions. qemu delivers the signal at a translation-block boundary, so
+ * addresses are basic-block accurate, which is plenty per function.
+ * Only the game's main thread is sampled (the one whose long frames are
+ * the loading screens); host addresses are labelled from /proc/self/maps,
+ * since time in Mesa's software renderer has no Vita equivalent. */
+static uint32_t *s_prof_game;
+static struct { uintptr_t pc; uint32_t n; } s_prof_host[65536];
+static uint32_t s_prof_total, s_prof_dropped, s_prof_other_threads;
+static pid_t s_main_tid;
+
+static void on_prof(int sig, siginfo_t *si, void *uc_)
+{
+    ucontext_t *uc = uc_;
+    uintptr_t pc = uc->uc_mcontext.arm_pc;
+    if ((pid_t)syscall(SYS_gettid) != s_main_tid) {
+        s_prof_other_threads++;
+        return;
+    }
+    s_prof_total++;
+    if (pc >= sf_game.base && pc < sf_game.base + sf_game.text_size) {
+        s_prof_game[(pc - sf_game.base) / 4]++;
+    } else {
+        uint32_t h = (uint32_t)(pc >> 2) * 2654435761u >> 16, i;
+        for (i = 0; i < 64; i++, h = (h + 1) & 0xffff) {
+            if (s_prof_host[h].pc == pc || !s_prof_host[h].pc) {
+                s_prof_host[h].pc = pc;
+                s_prof_host[h].n++;
+                return;
+            }
+        }
+        s_prof_dropped++;
+    }
+}
+
+static void prof_dump(void)
+{
+    char path[400];
+    const char *out = getenv("SF_OUT");
+    FILE *f;
+    uint32_t i;
+
+    snprintf(path, sizeof(path), "%s/profile.txt", out ? out : ".");
+    if (!(f = fopen(path, "w")))
+        return;
+    fprintf(f, "# main-thread samples %u, other threads %u, dropped %u, game base %#x\n",
+            (unsigned)s_prof_total, (unsigned)s_prof_other_threads, (unsigned)s_prof_dropped,
+            (unsigned)sf_game.hdr.base);
+    {
+        FILE *m = fopen("/proc/self/maps", "r");
+        char line[512];
+        while (m && fgets(line, sizeof(line), m))
+            if (strstr(line, " r-xp ") || strstr(line, " r-x"))
+                fprintf(f, "map %s", line);
+        if (m)
+            fclose(m);
+    }
+    for (i = 0; i < sf_game.text_size / 4; i++)
+        if (s_prof_game[i])
+            fprintf(f, "%u game %#x\n", (unsigned)s_prof_game[i],
+                    (unsigned)(sf_game.hdr.base + i * 4));
+    for (i = 0; i < 65536; i++)
+        if (s_prof_host[i].n)
+            fprintf(f, "%u host %#lx\n", (unsigned)s_prof_host[i].n,
+                    (unsigned long)s_prof_host[i].pc);
+    fclose(f);
+}
+
+static void prof_start(void)
+{
+    struct sigaction sa;
+    struct itimerval it = { { 0, 1000 }, { 0, 1000 } };
+
+    s_main_tid = (pid_t)syscall(SYS_gettid);
+    s_prof_game = calloc(sf_game.text_size / 4, sizeof(uint32_t));
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = on_prof;
+    sa.sa_flags = SA_SIGINFO | SA_RESTART;
+    sigaction(SIGPROF, &sa, NULL);
+    setitimer(ITIMER_PROF, &it, NULL);
+    atexit(prof_dump);
+    LOGI("profiler: sampling every 1 ms of CPU time");
+}
+
 int main(int argc, char **argv)
 {
     struct sigaction sa;
@@ -101,6 +192,8 @@ int main(int argc, char **argv)
     LOGI("%d imports left unresolved", sf_game.unresolved);
     sf_device_init(sf_game.config);
 
+    if (getenv("SF_PROFILE") && atoi(getenv("SF_PROFILE")))
+        prof_start();
     LOGI("entering s3e entry %p", (void *)sf_game.entry);
     sf_game.entry();
     LOGI("s3e entry returned");
