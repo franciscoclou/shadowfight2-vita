@@ -151,3 +151,23 @@ the bytes supplied, fewer than `len` at the end. `DecompRead(h, buf,
 3. First `eglSwapBuffers`, then the splash screen (logo on parchment).
    Without s3eDeviceUniqueID it stays there forever ("Hack error").
 4. With it: the Personal data consent screen ("I AGREE" at 480,493).
+
+## Frame rate and graphics quality
+
+- Main loop (cocos2d-x, link 0x4a05dd30): per frame it reads the time,
+  yields once, updates and draws (eglSwapBuffers), then calls
+  s3eDeviceYield until the animation interval (object +8/+12, 64-bit ms)
+  has passed. A fight at 30 fps spends ~80% of its time in that wait.
+- internalSettings.xml: `<FrameRate Value="60"/>`, plus QualityOptions
+  that apply per graphics quality: ReduceFPS (LOW), ParticlesOff and
+  SequencesOff (LOW and MEDIUM).
+- The quality is stored per profile in users.xml as
+  `<QualityCondition Value="LOW|MEDIUM|HIGH"/>`, and the in-game Settings
+  dialog changes it (Settings_Graphics_Quality). The first value comes
+  from assets/devices.xml, matched against s3eDeviceGetString(2)
+  (S3E_DEVICE_ID) in 0x4a1c8b70; "PSVita" is not listed.
+- The background thread (4001, 0x4a1d5d24) loops sleep(10) -> locked
+  periodic task 0x4a1d58a0; its sleep (0x4a78c6e8) spins on
+  s3eDeviceYield(remaining ms).
+- scripts/func_strings.py <start> <end> lists the PC-relative strings a
+  function uses, which Ghidra shows as DAT_ + constant.
