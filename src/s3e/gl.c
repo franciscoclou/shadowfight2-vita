@@ -77,15 +77,48 @@ typedef unsigned int GLuint;
 typedef int GLsizei;
 TIMED(glCompileShader, SF_PROF_SHADER, (GLuint s), (s), (GLuint))
 TIMED(glLinkProgram, SF_PROF_LINK, (GLuint p), (p), (GLuint))
-TIMED(glTexImage2D, SF_PROF_TEXTURE,
-      (GLenum t, GLint l, GLint fi, GLsizei w, GLsizei h, GLint b, GLenum f, GLenum ty, const void *d),
-      (t, l, fi, w, h, b, f, ty, d), (GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *))
 TIMED(glTexSubImage2D, SF_PROF_TEXTURE,
       (GLenum t, GLint l, GLint x, GLint y, GLsizei w, GLsizei h, GLenum f, GLenum ty, const void *d),
       (t, l, x, y, w, h, f, ty, d), (GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const void *))
 TIMED(glCompressedTexImage2D, SF_PROF_TEXTURE,
       (GLenum t, GLint l, GLenum fi, GLsizei w, GLsizei h, GLint b, GLsizei sz, const void *d),
       (t, l, fi, w, h, b, sz, d), (GLenum, GLint, GLenum, GLsizei, GLsizei, GLint, GLsizei, const void *))
+
+/* glTexImage2D also lets hud.c swap in the fight-control atlases with the
+ * controls erased (see hud.c), and glDeleteTextures tells it when a texture
+ * it tracks goes away. */
+static void t_glTexImage2D(GLenum t, GLint l, GLint fi, GLsizei w, GLsizei h, GLint b, GLenum f,
+                           GLenum ty, const void *d)
+{
+    static void (*fn)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *);
+    static int looked;
+    const void *alt;
+    uint64_t t0;
+    if (!looked) {
+        fn = (void (*)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *))
+             gl_proc("glTexImage2D");
+        looked = 1;
+    }
+    if (!fn)
+        return;
+    t0 = sf_plat_time_us();
+    alt = sf_hud_tex_image(l, w, h, f, ty, d);
+    fn(t, l, fi, w, h, b, f, ty, alt ? alt : d);
+    sf_prof_add(SF_PROF_TEXTURE, sf_plat_time_us() - t0, 0);
+}
+
+static void t_glDeleteTextures(GLsizei n, const GLuint *ids)
+{
+    static void (*fn)(GLsizei, const GLuint *);
+    static int looked;
+    if (!looked) {
+        fn = (void (*)(GLsizei, const GLuint *))gl_proc("glDeleteTextures");
+        looked = 1;
+    }
+    sf_hud_tex_deleted(n, ids);
+    if (fn)
+        fn(n, ids);
+}
 
 /* --- EGL --------------------------------------------------------------- */
 
@@ -310,6 +343,7 @@ const sf_export sf_exports_gl[] = {
     { "glCompileShader", (void *)t_glCompileShader },
     { "glLinkProgram", (void *)t_glLinkProgram },
     { "glTexImage2D", (void *)t_glTexImage2D },
+    { "glDeleteTextures", (void *)t_glDeleteTextures },
     { "glTexSubImage2D", (void *)t_glTexSubImage2D },
     { "glCompressedTexImage2D", (void *)t_glCompressedTexImage2D },
 

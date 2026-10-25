@@ -95,7 +95,7 @@ static void save_controls(void)
                "# buttons press. Delete this file to restore the defaults.\n"
                "version = %d\n"
                "# 1 shows the on-screen fight controls, 0 hides them (the magic\n"
-               "# and ranged meters stay). SELECT toggles it; restart to apply.\n"
+               "# and ranged meters stay). SELECT toggles it at any time.\n"
                "touch_controls = %d\n"
                "# joystick = centre x, centre y, drag radius, stick deadzone (0-127)\n"
                "joystick = %d %d %d %d\n",
@@ -210,8 +210,8 @@ void sf_input_poll(void)
     if ((in.buttons & SF_BTN_SELECT) && !(s_prev.buttons & SF_BTN_SELECT)) {
         s_touch_controls = !s_touch_controls;
         save_controls();
-        LOGI("controls: touch controls %s from the next launch",
-             s_touch_controls ? "shown" : "hidden");
+        sf_hud_apply(s_touch_controls);
+        LOGI("controls: touch controls %s", s_touch_controls ? "shown" : "hidden");
     }
 
     /* touch releases */

@@ -46,6 +46,13 @@ enum { SF_PROF_SHADER, SF_PROF_LINK, SF_PROF_TEXTURE, SF_PROF_FOPEN, SF_PROF_FRE
 void sf_prof_add(int cat, uint64_t us, uint32_t bytes);
 void sf_prof_frame(void);   /* once per presented frame */
 
+/* --- hud.c --- */
+void sf_hud_file_opened(const char *name);
+const void *sf_hud_tex_image(int32_t level, int32_t w, int32_t h, uint32_t fmt, uint32_t type,
+                             const void *data);
+void sf_hud_tex_deleted(int32_t n, const uint32_t *ids);
+void sf_hud_apply(int shown);
+
 /* --- thread.c --- */
 int  sf_thread_is_main(void);
 

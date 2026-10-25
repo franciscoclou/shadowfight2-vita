@@ -17,8 +17,13 @@ harness: $(SRC) $(wildcard $(ROOT)/src/*/*.h)
 test_compress: test_compress.c $(ROOT)/src/s3e/compress.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lz
 
-test: test_compress
-	qemu-arm -L /usr/arm-linux-gnueabihf ./test_compress
+test_hud: test_hud.c $(ROOT)/src/s3e/hud.c
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lpthread
+
+test: test_compress test_hud
+	qemu-arm ./test_compress
+	python3 $(ROOT)/scripts/hud_reference.py $(ROOT)/game_out hud_ref
+	SF_HUD_REF=hud_ref qemu-arm ./test_hud
 
 clean:
-	rm -f harness test_compress
+	rm -rf harness test_compress test_hud hud_ref
