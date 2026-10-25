@@ -12,6 +12,7 @@
  * implemented yet; it is logged so its first use is obvious.
  */
 #include "s3e/s3e_internal.h"
+#include "platform/platform.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -102,7 +103,17 @@ static int32_t sf_s3eCompressionDecompInit(uint32_t type, s3eCallback read_cb, v
     return h + 1;
 }
 
+static int32_t decomp_read(int32_t h, void *buf, int32_t *len);
+
 static int32_t sf_s3eCompressionDecompRead(int32_t h, void *buf, int32_t *len)
+{
+    uint64_t t0 = sf_plat_time_us();
+    int32_t r = decomp_read(h, buf, len);
+    sf_prof_add(SF_PROF_INFLATE, sf_plat_time_us() - t0, 0);
+    return r;
+}
+
+static int32_t decomp_read(int32_t h, void *buf, int32_t *len)
 {
     sf_stream *s = h >= 1 && h <= MAX_STREAMS ? s_streams[h - 1] : NULL;
     int32_t want, got = 0;

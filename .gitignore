@@ -47,3 +47,5 @@ tests/harness/test_compress
 tests/harness/test_hud
 tests/harness/hud_ref/
 tests/harness/*.core
+tests/harness/test_file
+tests/harness/test_memory

@@ -167,7 +167,20 @@ static void *lock_create(void)
 }
 
 /* 12 */
+static int32_t lock_acquire_(sf_lock *l, int32_t timeout_ms);
+
+/* Time the main thread spends blocked on the game's locks and semaphores
+ * (prof.c "wait"): loading that waits on another thread shows up here. */
 static int32_t lock_acquire(sf_lock *l, int32_t timeout_ms)
+{
+    uint64_t t0 = sf_plat_time_us();
+    int32_t r = lock_acquire_(l, timeout_ms);
+    if (sf_thread_is_main())
+        sf_prof_add(SF_PROF_WAIT, sf_plat_time_us() - t0, 0);
+    return r;
+}
+
+static int32_t lock_acquire_(sf_lock *l, int32_t timeout_ms)
 {
     LOGV("LockAcquire(%p, %d)", (void *)l, (int)timeout_ms);
     if (!l || l->tag != TAG_LOCK)
@@ -204,7 +217,18 @@ static void *sem_create(uint32_t count)
 }
 
 /* 16 */
+static int32_t sem_wait_ms_(sf_sem *s, int32_t timeout_ms);
+
 static int32_t sem_wait_ms(sf_sem *s, int32_t timeout_ms)
+{
+    uint64_t t0 = sf_plat_time_us();
+    int32_t r = sem_wait_ms_(s, timeout_ms);
+    if (sf_thread_is_main())
+        sf_prof_add(SF_PROF_WAIT, sf_plat_time_us() - t0, 0);
+    return r;
+}
+
+static int32_t sem_wait_ms_(sf_sem *s, int32_t timeout_ms)
 {
     int32_t r = S3E_RESULT_SUCCESS;
     if (!s || s->tag != TAG_SEM)

@@ -42,7 +42,9 @@ uint64_t sf_time_ms(void);
 int  sf_quit_requested(void);
 
 /* --- prof.c --- */
-enum { SF_PROF_SHADER, SF_PROF_LINK, SF_PROF_TEXTURE, SF_PROF_FOPEN, SF_PROF_FREAD, SF_PROF_N };
+enum { SF_PROF_SHADER, SF_PROF_LINK, SF_PROF_TEXTURE, SF_PROF_FOPEN, SF_PROF_FREAD,
+       SF_PROF_MALLOC, SF_PROF_INFLATE, SF_PROF_YIELD, SF_PROF_WRITE, SF_PROF_WAIT,
+       SF_PROF_N };
 void sf_prof_add(int cat, uint64_t us, uint32_t bytes);
 void sf_prof_frame(void);   /* once per presented frame */
 

@@ -9,6 +9,8 @@
 #include <stdarg.h>
 void sf_log_write(const char *l, const char *f, int n, const char *fmt, ...)
 { va_list ap; va_start(ap, fmt); fprintf(stderr, "[%s] ", l); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); }
+uint64_t sf_plat_time_us(void) { return 0; }
+void sf_prof_add(int cat, uint64_t us, uint32_t bytes) {}
 extern const sf_export sf_exports_compress[];
 typedef int32_t (*init_t)(uint32_t, s3eCallback, void *);
 typedef int32_t (*read_t)(int32_t, void *, int32_t *);

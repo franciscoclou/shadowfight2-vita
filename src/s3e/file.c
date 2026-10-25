@@ -45,14 +45,26 @@ typedef struct sf_userfs {
 static sf_userfs s_userfs[MAX_USERFS];
 static int s_nuserfs;
 
+/* Read-only disk files (kind 4) get our own buffer instead of stdio's.
+ * Derbh seeks before nearly every read of its archives and the XML parser
+ * reads a byte at a time: through stdio each seek threw the buffer away
+ * (so a few bytes cost a whole refill from the memory card) and each tiny
+ * read paid newlib's full call path. Here a seek only moves pos, and a
+ * read inside the buffered window is a memcpy. */
+#define RBUF_SIZE (16 * 1024)
+
 typedef struct sf_file {
-    int kind;                 /* 1 = stdio, 2 = user fs, 3 = memory */
+    int kind;                 /* 1 = stdio (writable), 2 = user fs, 3 = memory, 4 = buffered read */
     FILE *fp;
+    uint8_t *rb;              /* kind 4: buffer holding file bytes [rb_off, rb_off + rb_len) */
+    int64_t rb_off, pos, size, fpos;
+    uint32_t rb_len;
     const sf_userfs *ufs;
     void *uh;
     const uint8_t *mem;
     uint32_t mem_size, mem_pos;
     int eof;
+    int writing;
 } sf_file;
 
 /* --- paths ------------------------------------------------------------- */
@@ -130,7 +142,9 @@ static sf_file *sf_s3eFileOpen(const char *name, const char *mode)
 {
     uint64_t t0 = sf_plat_time_us();
     sf_file *f = sf_s3eFileOpen_(name, mode);
-    sf_prof_add(SF_PROF_FOPEN, sf_plat_time_us() - t0, 0);
+    /* Creating and truncating files is what is slow on the memory card,
+     * so opens for writing are counted with the writes. */
+    sf_prof_add(is_writable_mode(mode) ? SF_PROF_WRITE : SF_PROF_FOPEN, sf_plat_time_us() - t0, 0);
     return f;
 }
 
@@ -173,14 +187,22 @@ static sf_file *sf_s3eFileOpen_(const char *name, const char *mode)
             LOGV("s3eFileOpen(%s, %s) -> not found (%s)", name, mode, path);
             return NULL;
         }
-        /* newlib's default buffer is tiny and Derbh reads its archives in
-         * small pieces between seeks; one read call per piece is slow on
-         * a memory card. */
-        if (!is_writable_mode(mode))
-            setvbuf(fp, NULL, _IOFBF, 64 * 1024);
         f = calloc(1, sizeof(*f));
-        f->kind = 1;
         f->fp = fp;
+        if (is_writable_mode(mode)) {
+            /* newlib's default buffer is tiny and the game writes its saves
+             * a few bytes at a time: one I/O call per piece otherwise. */
+            setvbuf(fp, NULL, _IOFBF, 64 * 1024);
+            f->kind = 1;
+            f->writing = 1;
+        } else {
+            setvbuf(fp, NULL, _IONBF, 0);
+            f->kind = 4;
+            f->rb = malloc(RBUF_SIZE);
+            fseek(fp, 0, SEEK_END);
+            f->size = ftell(fp);
+            fseek(fp, 0, SEEK_SET);
+        }
     }
     LOGV("s3eFileOpen(%s, %s) -> %s", name, mode, path);
     return f;
@@ -206,9 +228,14 @@ static int32_t sf_s3eFileClose(sf_file *f)
         s_err = S3E_FILE_ERR_PARAM;
         return S3E_RESULT_ERROR;
     }
-    if (f->kind == 1)
+    if (f->kind == 1 && f->writing) {
+        uint64_t t0 = sf_plat_time_us();
         fclose(f->fp);
-    else if (f->kind == 2)
+        sf_prof_add(SF_PROF_WRITE, sf_plat_time_us() - t0, 0);
+    } else if (f->kind == 1 || f->kind == 4) {
+        fclose(f->fp);
+        free(f->rb);
+    } else if (f->kind == 2)
         f->ufs->close(f->uh);
     free(f);
     return S3E_RESULT_SUCCESS;
@@ -216,16 +243,64 @@ static int32_t sf_s3eFileClose(sf_file *f)
 
 /* --- io ---------------------------------------------------------------- */
 
+/* Read len bytes at f->pos through the buffer; returns bytes read. Only
+ * real disk reads are timed (prof "fread"): timing every call cost more
+ * than the calls themselves. */
+static uint32_t buffered_read(sf_file *f, uint8_t *dst, uint32_t len)
+{
+    uint32_t done = 0;
+    while (done < len && f->pos < f->size) {
+        if (f->pos >= f->rb_off && f->pos < f->rb_off + f->rb_len) {
+            uint32_t at = (uint32_t)(f->pos - f->rb_off), n = f->rb_len - at;
+            if (n > len - done)
+                n = len - done;
+            memcpy(dst + done, f->rb + at, n);
+            done += n;
+            f->pos += n;
+            continue;
+        }
+        {
+            /* Large reads go straight to the destination. */
+            int direct = len - done >= RBUF_SIZE || !f->rb;
+            uint8_t *into = direct ? dst + done : f->rb;
+            uint32_t want = direct ? len - done : RBUF_SIZE;
+            uint64_t t0 = sf_plat_time_us();
+            size_t got;
+            if (f->fpos != f->pos && fseek(f->fp, (long)f->pos, SEEK_SET) != 0)
+                break;
+            got = fread(into, 1, want, f->fp);
+            f->fpos = f->pos + (int64_t)got;
+            sf_prof_add(SF_PROF_FREAD, sf_plat_time_us() - t0, (uint32_t)got);
+            if (!got)
+                break;
+            if (direct) {
+                done += (uint32_t)got;
+                f->pos += (int64_t)got;
+            } else {
+                f->rb_off = f->pos;
+                f->rb_len = (uint32_t)got;
+            }
+        }
+    }
+    return done;
+}
+
 static uint32_t sf_s3eFileRead(void *buf, uint32_t size, uint32_t count, sf_file *f)
 {
     uint32_t n;
     if (!f || !buf || !size)
         return 0;
     switch (f->kind) {
-    case 1: {
-        uint64_t t0 = sf_plat_time_us();
+    case 1:
         n = (uint32_t)fread(buf, size, count, f->fp);
-        sf_prof_add(SF_PROF_FREAD, sf_plat_time_us() - t0, n * size);
+        f->eof = n < count;
+        return n;
+    case 4: {
+        int64_t start = f->pos;
+        uint32_t got = buffered_read(f, buf, size * count);
+        /* fread semantics: whole items only, a partial one is not consumed. */
+        n = got / size;
+        f->pos = start + (int64_t)n * size;
         f->eof = n < count;
         return n;
     }
@@ -244,9 +319,14 @@ static uint32_t sf_s3eFileRead(void *buf, uint32_t size, uint32_t count, sf_file
 
 static uint32_t sf_s3eFileWrite(const void *buf, uint32_t size, uint32_t count, sf_file *f)
 {
+    uint64_t t0;
+    uint32_t n;
     if (!f || f->kind != 1)
         return 0;
-    return (uint32_t)fwrite(buf, size, count, f->fp);
+    t0 = sf_plat_time_us();
+    n = (uint32_t)fwrite(buf, size, count, f->fp);
+    sf_prof_add(SF_PROF_WRITE, sf_plat_time_us() - t0, n * size);
+    return n;
 }
 
 static int32_t sf_s3eFileSeek(sf_file *f, int32_t off, int32_t origin)
@@ -258,6 +338,13 @@ static int32_t sf_s3eFileSeek(sf_file *f, int32_t off, int32_t origin)
     switch (f->kind) {
     case 1:
         return fseek(f->fp, off, whence) == 0 ? S3E_RESULT_SUCCESS : S3E_RESULT_ERROR;
+    case 4: {
+        int64_t pos = whence == SEEK_SET ? off : whence == SEEK_CUR ? f->pos + off : f->size + off;
+        if (pos < 0)
+            return S3E_RESULT_ERROR;
+        f->pos = pos;
+        return S3E_RESULT_SUCCESS;
+    }
     case 2:
         return f->ufs->seek(f->uh, off, origin);
     default: {
@@ -277,6 +364,7 @@ static int32_t sf_s3eFileTell(sf_file *f)
         return -1;
     switch (f->kind) {
     case 1: return (int32_t)ftell(f->fp);
+    case 4: return (int32_t)f->pos;
     case 2: return f->ufs->tell(f->uh);
     default: return (int32_t)f->mem_pos;
     }
@@ -289,6 +377,8 @@ static int32_t sf_s3eFileGetSize(sf_file *f)
         return -1;
     if (f->kind == 3)
         return (int32_t)f->mem_size;
+    if (f->kind == 4)
+        return (int32_t)f->size;
     cur = sf_s3eFileTell(f);
     sf_s3eFileSeek(f, 0, 2);
     size = sf_s3eFileTell(f);
@@ -304,6 +394,8 @@ static int32_t sf_s3eFileEOF(sf_file *f)
         return f->ufs->eof(f->uh);
     if (f->kind == 1)
         return f->eof || feof(f->fp);
+    if (f->kind == 4)
+        return f->eof || f->pos >= f->size;
     return f->mem_pos >= f->mem_size;
 }
 

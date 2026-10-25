@@ -16,7 +16,8 @@
 #define SLOW_FRAME_MS 100
 
 static const char *const s_names[SF_PROF_N] = {
-    "shader", "link", "texture", "fopen", "fread",
+    "shader", "link", "texture", "fopen", "fread", "malloc", "inflate", "yield", "write",
+    "wait",
 };
 
 static uint64_t s_us[SF_PROF_N], s_calls[SF_PROF_N], s_bytes;
@@ -56,12 +57,15 @@ void sf_prof_frame(void)
     if (dt > SLOW_FRAME_MS * 1000ull) {
         slow++;
         if (now - last_slow_log > 1000000) {
-            char line[256];
-            int n = snprintf(line, sizeof(line), "slow frame: %u ms (", (unsigned)(dt / 1000));
-            for (i = 0; i < SF_PROF_N && n < (int)sizeof(line); i++)
-                n += snprintf(line + n, sizeof(line) - (size_t)n, "%s%s %u ms", i ? ", " : "",
-                              s_names[i], (unsigned)((get(&s_us[i]) - s_frame_us[i]) / 1000));
-            LOGI("%s)", line);
+            char line[512];
+            int n = snprintf(line, sizeof(line), "slow frame: %u ms (", (unsigned)(dt / 1000)), any = 0;
+            for (i = 0; i < SF_PROF_N && n < (int)sizeof(line); i++) {
+                unsigned ms = (unsigned)((get(&s_us[i]) - s_frame_us[i]) / 1000);
+                if (ms)
+                    n += snprintf(line + n, sizeof(line) - (size_t)n, "%s%s %u ms", any++ ? ", " : "",
+                                  s_names[i], ms);
+            }
+            LOGI("%s%s)", line, any ? "" : "nothing measured");
             last_slow_log = now;
         }
     }

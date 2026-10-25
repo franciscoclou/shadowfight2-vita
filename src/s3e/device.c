@@ -102,8 +102,11 @@ static int64_t sf_s3eDeviceYield(int32_t ms)
         sf_input_poll();
         sf_sound_poll();
         run_timers();
-        if (ms > 0)
+        if (ms > 0) {
+            uint64_t t0 = sf_plat_time_us();
             sf_plat_sleep_us(1000);
+            sf_prof_add(SF_PROF_YIELD, sf_plat_time_us() - t0, 0);
+        }
     } while (sf_time_ms() < until);
     return 0;
 }

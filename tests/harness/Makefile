@@ -20,10 +20,18 @@ test_compress: test_compress.c $(ROOT)/src/s3e/compress.c
 test_hud: test_hud.c $(ROOT)/src/s3e/hud.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lpthread
 
-test: test_compress test_hud
+test_file: test_file.c $(ROOT)/src/s3e/file.c
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+test_memory: test_memory.c $(ROOT)/src/s3e/memory.c
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lpthread
+
+test: test_compress test_hud test_file test_memory
 	qemu-arm ./test_compress
 	python3 $(ROOT)/scripts/hud_reference.py $(ROOT)/game_out hud_ref
 	SF_HUD_REF=hud_ref qemu-arm ./test_hud
+	qemu-arm ./test_file
+	qemu-arm ./test_memory
 
 clean:
-	rm -rf harness test_compress test_hud hud_ref
+	rm -rf harness test_compress test_hud test_file test_memory hud_ref
