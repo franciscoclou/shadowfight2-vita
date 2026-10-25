@@ -107,6 +107,19 @@ static void t_glTexImage2D(GLenum t, GLint l, GLint fi, GLsizei w, GLsizei h, GL
     sf_prof_add(SF_PROF_TEXTURE, sf_plat_time_us() - t0, 0);
 }
 
+static void t_glBindTexture(GLenum target, GLuint tex)
+{
+    static void (*fn)(GLenum, GLuint);
+    static int looked;
+    if (!looked) {
+        fn = (void (*)(GLenum, GLuint))gl_proc("glBindTexture");
+        looked = 1;
+    }
+    sf_hud_tex_bound(tex);
+    if (fn)
+        fn(target, tex);
+}
+
 static void t_glDeleteTextures(GLsizei n, const GLuint *ids)
 {
     static void (*fn)(GLsizei, const GLuint *);
@@ -307,6 +320,7 @@ static unsigned sf_eglSwapBuffers(EGLDisplay d, EGLSurface s)
     static unsigned frames;
     sf_plat_swap();
     sf_prof_frame();
+    sf_hud_frame();
     if (frames++ == 0)
         LOGI("first eglSwapBuffers");
     return 1;
@@ -344,6 +358,7 @@ const sf_export sf_exports_gl[] = {
     { "glLinkProgram", (void *)t_glLinkProgram },
     { "glTexImage2D", (void *)t_glTexImage2D },
     { "glDeleteTextures", (void *)t_glDeleteTextures },
+    { "glBindTexture", (void *)t_glBindTexture },
     { "glTexSubImage2D", (void *)t_glTexSubImage2D },
     { "glCompressedTexImage2D", (void *)t_glCompressedTexImage2D },
 

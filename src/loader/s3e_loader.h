@@ -34,7 +34,7 @@ typedef struct sf_s3e_header {
     uint32_t data_off;
 } __attribute__((packed)) sf_s3e_header;
 
-typedef struct sf_s3e_module {
+typedef struct sf_s3e_module {   /* struct tag used by s3e_internal.h */
     sf_s3e_header hdr;
     uintptr_t base;          /* where the blob is mapped */
     uint32_t  text_size;     /* bytes of the RX mapping */

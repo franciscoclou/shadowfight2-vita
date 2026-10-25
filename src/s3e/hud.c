@@ -11,6 +11,10 @@
  * copy with the control frames cleared, showing re-uploads the original,
  * both with glTexSubImage2D into the same texture, so toggling is instant.
  *
+ * The same texture ids tell when a fight is on screen: sf_hud_in_fight()
+ * is true while one of the atlases was bound during the last couple of
+ * frames, which input.c uses to keep the Vita's buttons out of menus.
+ *
  * Erased: the punch/kick/throw/magic/charge discs and the whole joystick.
  * Kept: the pause button, the magic charge ring and full icon, the ranged
  * ring and full icon, and the tutorial highlight.
@@ -313,4 +317,32 @@ void sf_hud_apply(int shown)
     }
     pthread_mutex_unlock(&s_lock);
     bind(GL_TEXTURE_2D, (GLuint)prev);
+}
+
+/* --- fight detection ----------------------------------------------------- */
+
+static unsigned s_frame, s_last_bound_frame;
+static int s_ever_bound;
+
+void sf_hud_tex_bound(uint32_t tex)
+{
+    int j;
+    if (!tex)
+        return;
+    for (j = 0; j < MAX_ATLASES; j++)
+        if (s_atlas[j].used && s_atlas[j].tex == tex) {
+            s_last_bound_frame = s_frame;
+            s_ever_bound = 1;
+            return;
+        }
+}
+
+void sf_hud_frame(void)
+{
+    s_frame++;
+}
+
+int sf_hud_in_fight(void)
+{
+    return s_ever_bound && s_frame - s_last_bound_frame <= 2;
 }

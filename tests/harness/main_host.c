@@ -191,6 +191,7 @@ int main(int argc, char **argv)
         return 1;
     LOGI("%d imports left unresolved", sf_game.unresolved);
     sf_device_init(sf_game.config);
+    sf_apply_patches(&sf_game);
 
     if (getenv("SF_PROFILE") && atoi(getenv("SF_PROFILE")))
         prof_start();

@@ -48,12 +48,19 @@ enum { SF_PROF_SHADER, SF_PROF_LINK, SF_PROF_TEXTURE, SF_PROF_FOPEN, SF_PROF_FRE
 void sf_prof_add(int cat, uint64_t us, uint32_t bytes);
 void sf_prof_frame(void);   /* once per presented frame */
 
+/* --- patches.c --- */
+struct sf_s3e_module;
+void sf_apply_patches(const struct sf_s3e_module *mod);
+
 /* --- hud.c --- */
 void sf_hud_file_opened(const char *name);
 const void *sf_hud_tex_image(int32_t level, int32_t w, int32_t h, uint32_t fmt, uint32_t type,
                              const void *data);
 void sf_hud_tex_deleted(int32_t n, const uint32_t *ids);
 void sf_hud_apply(int shown);
+void sf_hud_tex_bound(uint32_t tex);
+void sf_hud_frame(void);
+int  sf_hud_in_fight(void);   /* the fight controls were drawn just now */
 
 /* --- thread.c --- */
 int  sf_thread_is_main(void);
@@ -66,6 +73,7 @@ void sf_sound_poll(void);   /* main thread: deliver queued audio callbacks */
 
 /* --- input.c --- */
 int  sf_touch_controls_shown(void);
+int  sf_option_cheats(void);
 void sf_input_poll(void);
 
 /* --- gl.c --- */

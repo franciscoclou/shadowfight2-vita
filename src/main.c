@@ -197,6 +197,7 @@ int main(void)
     LOGI("%d imports left unresolved", sf_game.unresolved);
     log_free_memory("after mapping the game");
     sf_device_init(sf_game.config);
+    sf_apply_patches(&sf_game);
 
     /* The game's main thread gets core 0 to itself; its loader threads run
      * on core 1 and the audio mixer on core 2 (platform/vita.c). */

@@ -53,7 +53,8 @@ static const struct { uint32_t btn; int key; } s_keymap[] = {
 /* --- virtual touches ------------------------------------------------------ */
 
 #define VPAD_ID 200
-#define CONTROLS_VERSION 2
+#define CONTROLS_VERSION 3
+#define CONTROLS_COMPATIBLE 2   /* older files had punch and kick swapped */
 
 /* punch, kick and the joystick are measured from the tutorial dojo's HUD
  * on the harness; ranged, magic and pause are estimates (those controls
@@ -68,6 +69,7 @@ static struct { const char *name; uint32_t btn; int x, y; } s_vbtn[V_NBUTTONS] =
 };
 static int s_joy_x = 137, s_joy_y = 405, s_joy_r = 65, s_deadzone = 40;
 static int s_touch_controls;   /* draw the on-screen fight controls */
+static int s_cheats;           /* developer panel in the shop (patches.c) */
 
 static void ensure_controls(void);
 
@@ -75,6 +77,12 @@ int sf_touch_controls_shown(void)
 {
     ensure_controls();
     return s_touch_controls;
+}
+
+int sf_option_cheats(void)
+{
+    ensure_controls();
+    return s_cheats;
 }
 
 static void controls_path(char *path, size_t n)
@@ -97,16 +105,20 @@ static void save_controls(void)
                "# 1 shows the on-screen fight controls, 0 hides them (the magic\n"
                "# and ranged meters stay). SELECT toggles it at any time.\n"
                "touch_controls = %d\n"
+               "# 1 turns on the game's developer mode at the next launch: a\n"
+               "# button in the shop opens the panel with coins, gems, levels.\n"
+               "cheats = %d\n"
                "# joystick = centre x, centre y, drag radius, stick deadzone (0-127)\n"
                "joystick = %d %d %d %d\n",
-            CONTROLS_VERSION, s_touch_controls, s_joy_x, s_joy_y, s_joy_r, s_deadzone);
+            CONTROLS_VERSION, s_touch_controls, s_cheats, s_joy_x, s_joy_y, s_joy_r, s_deadzone);
     for (i = 0; i < V_NBUTTONS; i++)
         fprintf(f, "%s = %d %d\n", s_vbtn[i].name, s_vbtn[i].x, s_vbtn[i].y);
     fclose(f);
 }
 
-/* Reads controls.txt. A missing file, or one from before the current
- * layout version, is replaced with the defaults. */
+/* Reads controls.txt. A missing file, or one with the version 1 layout, is
+ * replaced with the defaults; a compatible older one keeps its values and
+ * is rewritten with the options added since. */
 static void load_controls(void)
 {
     char path[300], line[128], name[32];
@@ -120,7 +132,7 @@ static void load_controls(void)
                 version = x;
         rewind(f);
     }
-    if (!f || version < CONTROLS_VERSION) {
+    if (!f || version < CONTROLS_COMPATIBLE) {
         if (f)
             fclose(f);
         save_controls();
@@ -135,6 +147,10 @@ static void load_controls(void)
             s_touch_controls = x != 0;
             continue;
         }
+        if (sscanf(line, " cheats = %d", &x) == 1) {
+            s_cheats = x != 0;
+            continue;
+        }
         if (sscanf(line, " joystick = %d %d %d %d", &x, &y, &r, &dz) == 4) {
             s_joy_x = x; s_joy_y = y; s_joy_r = r; s_deadzone = dz;
             continue;
@@ -147,7 +163,10 @@ static void load_controls(void)
                 }
     }
     fclose(f);
-    LOGI("controls: loaded %s (touch controls %s)", path, s_touch_controls ? "shown" : "hidden");
+    if (version < CONTROLS_VERSION)
+        save_controls();
+    LOGI("controls: loaded %s (touch controls %s%s)", path, s_touch_controls ? "shown" : "hidden",
+         s_cheats ? ", developer mode" : "");
 }
 
 /* Loaded on first use: s3eFileOpen asks whether to hide the controls'
@@ -179,6 +198,11 @@ static void add_virtual_touches(sf_input *in)
     int dx = in->lx, dy = in->ly, i;
 
     ensure_controls();
+    /* Only in a fight: elsewhere the same screen points are menu buttons. */
+    if (!sf_hud_in_fight()) {
+        joy_down = 0;
+        return;
+    }
     if (dx * dx + dy * dy < s_deadzone * s_deadzone)
         dx = dy = 0;
     if (in->buttons & SF_BTN_LEFT)  dx = -127;
@@ -207,7 +231,7 @@ void sf_input_poll(void)
     memset(&in, 0, sizeof(in));
     sf_plat_input(&in);
     add_virtual_touches(&in);
-    if ((in.buttons & SF_BTN_SELECT) && !(s_prev.buttons & SF_BTN_SELECT)) {
+    if ((in.buttons & SF_BTN_SELECT) && !(s_prev.buttons & SF_BTN_SELECT) && sf_hud_in_fight()) {
         s_touch_controls = !s_touch_controls;
         save_controls();
         sf_hud_apply(s_touch_controls);
