@@ -146,6 +146,7 @@ static void *make_button(uint8_t *self, int style, const char *text, int id)
 #define WATERMARK_SCALE 0.75f
 
 static void *s_mark;
+static void *s_first_button;   /* retained: the cheats page is up while it is */
 
 /* Replaces slot 0x248 (0x4a639fc8), which shows the panel. The panel
  * hangs in the shop's right-hand column (0x4a8eb7f0), a child of the shop
@@ -177,7 +178,8 @@ static void show_panel(void *self)
 }
 
 /* Replaces slot 0x280 (0x4a63a9f8), which hides whatever the panel shows;
- * every show calls it first. */
+ * every show calls it first. Other ways off the page (the shop's item
+ * categories) are caught by sf_cheats_poll. */
 static void hide_panel(void *self)
 {
     ((obj_fn)G(0x4a63a9f8))(self);
@@ -207,12 +209,39 @@ static void build_panel(uint8_t *self)
     ((setb_fn)VT(box, 0x90))(box, 0);
     for (i = 0; i < sizeof(buttons) / sizeof(buttons[0]); i++) {
         void *btn = make_button(self, buttons[i].style, buttons[i].text, buttons[i].id);
+        if (i == 0) {
+            if (s_first_button)
+                sf_game_release(s_first_button);
+            s_first_button = btn;
+            sf_game_retain(btn);
+        }
         y -= ((getf_fn)VT(btn, 0x224))(btn) + buttons[i].gap;
         ((setf_fn)VT(btn, 0x64))(btn, y);
         y = ((getf_fn)VT(btn, 0x68))(btn);
         ((add_child_fn)VT(box, 0xc8))(box, btn);
     }
     ((add_child_fn)VT(self, 0xc8))(self, box);
+}
+
+/* Once per yield: the watermark shows only while the cheats page does,
+ * that is while its first button is enabled (+0xfc, which setVisible and
+ * the panel's own show/hide set) and it, its container, the panel and the
+ * shop's column are all visible. A shop that closed detached them, which
+ * ends the walk early. */
+void sf_cheats_poll(void)
+{
+    void *n = s_first_button;
+    int i, shown;
+
+    if (!s_mark)
+        return;
+    shown = n && *((uint8_t *)n + 0xfc);
+    for (i = 0; shown && i < 4; i++) {
+        shown = n && ((int (*)(void *))VT(n, NODE_IS_VISIBLE))(n);
+        n = shown ? ((node_get_fn)VT(n, NODE_GET_PARENT))(n) : NULL;
+    }
+    if (shown != ((int (*)(void *))VT(s_mark, NODE_IS_VISIBLE))(s_mark))
+        ((setb_fn)VT(s_mark, NODE_SET_VISIBLE))(s_mark, shown);
 }
 
 /* --- install --------------------------------------------------------------- */

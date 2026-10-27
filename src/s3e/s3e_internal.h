@@ -54,6 +54,7 @@ void sf_apply_patches(const struct sf_s3e_module *mod);
 
 /* --- cheats.c --- */
 void sf_cheats_install(const struct sf_s3e_module *mod);
+void sf_cheats_poll(void);   /* main thread, once per yield */
 
 /* --- ui.c --- */
 void sf_ui_install(const struct sf_s3e_module *mod);
@@ -91,5 +92,6 @@ void sf_input_poll(void);
 
 /* --- gl.c --- */
 void sf_gl_init(void);
+void *sf_gl_trace(const char *name, void *fn);   /* fn behind a GL error check */
 
 #endif
