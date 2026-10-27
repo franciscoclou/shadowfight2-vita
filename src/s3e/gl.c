@@ -84,6 +84,58 @@ TIMED(glCompressedTexImage2D, SF_PROF_TEXTURE,
       (GLenum t, GLint l, GLenum fi, GLsizei w, GLsizei h, GLint b, GLsizei sz, const void *d),
       (t, l, fi, w, h, b, sz, d), (GLenum, GLint, GLenum, GLsizei, GLsizei, GLint, GLsizei, const void *))
 
+/* --- scissor box ----------------------------------------------------------
+ * The game saves and restores the scissor rectangle with
+ * glGetFloatv(GL_SCISSOR_BOX), which vitaGL rejects (GL_INVALID_ENUM) and
+ * leaves the output untouched: the zone 2+ arenas were then clipped to
+ * garbage and drew as scattered tiles over stale frames. The box is kept
+ * here from glScissor and answered for both getters. */
+#define GL_SCISSOR_BOX 0x0C10
+static GLint s_scissor[4] = { 0, 0, SF_SCREEN_W, SF_SCREEN_H };
+
+static void t_glScissor(GLint x, GLint y, GLint w, GLint h)
+{
+    static void (*fn)(GLint, GLint, GLint, GLint);
+    if (!fn)
+        fn = (void (*)(GLint, GLint, GLint, GLint))gl_proc("glScissor");
+    s_scissor[0] = x;
+    s_scissor[1] = y;
+    s_scissor[2] = w;
+    s_scissor[3] = h;
+    if (fn)
+        fn(x, y, w, h);
+}
+
+static void t_glGetFloatv(GLenum pname, GLfloat *out)
+{
+    static void (*fn)(GLenum, GLfloat *);
+    int i;
+    if (pname == GL_SCISSOR_BOX) {
+        for (i = 0; i < 4; i++)
+            out[i] = (GLfloat)s_scissor[i];
+        return;
+    }
+    if (!fn)
+        fn = (void (*)(GLenum, GLfloat *))gl_proc("glGetFloatv");
+    if (fn)
+        fn(pname, out);
+}
+
+static void t_glGetIntegerv(GLenum pname, GLint *out)
+{
+    static void (*fn)(GLenum, GLint *);
+    int i;
+    if (pname == GL_SCISSOR_BOX) {
+        for (i = 0; i < 4; i++)
+            out[i] = s_scissor[i];
+        return;
+    }
+    if (!fn)
+        fn = (void (*)(GLenum, GLint *))gl_proc("glGetIntegerv");
+    if (fn)
+        fn(pname, out);
+}
+
 /* --- GL error tracing ----------------------------------------------------
  * Every integer-only GL import the game calls straight into the platform
  * goes through a thunk (gl_trace.S) that checks glGetError after the call
@@ -420,6 +472,9 @@ const sf_export sf_exports_gl[] = {
     { "glBindTexture", (void *)t_glBindTexture },
     { "glTexSubImage2D", (void *)t_glTexSubImage2D },
     { "glCompressedTexImage2D", (void *)t_glCompressedTexImage2D },
+    { "glScissor", (void *)t_glScissor },
+    { "glGetFloatv", (void *)t_glGetFloatv },
+    { "glGetIntegerv", (void *)t_glGetIntegerv },
 
     { "eglGetDisplay", (void *)sf_eglGetDisplay },
     { "eglInitialize", (void *)sf_eglInitialize },

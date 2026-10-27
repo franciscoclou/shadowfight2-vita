@@ -300,3 +300,16 @@ crash, so s3eDeviceGetInt reports 640 MB (RAM + CDRAM).
   and _Right.png, shipped as Background_left/right.png: found on the
   Vita's case-insensitive exFAT, shown as misc/no_image.png ("?") on the
   Linux harness.
+
+## vitaGL gaps the game hits
+
+Found with gl.c's GL error tracer (every integer-only GL import checks
+glGetError after the call and logs the first failures by name).
+
+- glGetFloatv(GL_SCISSOR_BOX): rejected (INVALID_ENUM), output left
+  untouched. The zone 2+ arenas save and restore the scissor box with it,
+  so they were clipped to garbage: scattered tiles over stale frames. gl.c
+  tracks glScissor and answers GL_SCISSOR_BOX itself.
+- Harmless at boot: glEnable(GL_LIGHTING), glDisable(0x809e/0x80a0
+  multisample), glPixelStorei(GL_PACK/UNPACK_ALIGNMENT),
+  glHint(GL_GENERATE_MIPMAP_HINT).
