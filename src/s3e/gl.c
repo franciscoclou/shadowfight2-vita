@@ -93,6 +93,10 @@ TIMED(glCompressedTexImage2D, SF_PROF_TEXTURE,
  * garbage and drew as scattered tiles over stale frames. The box is kept
  * here from glScissor and answered for both getters. */
 #define GL_SCISSOR_BOX 0x0C10
+#define GL_ARRAY_BUFFER_BINDING_         0x8894   /* buffers: see below */
+#define GL_ELEMENT_ARRAY_BUFFER_BINDING_ 0x8895
+static GLuint s_bound_array, s_bound_element;
+
 static GLint s_scissor[4] = { 0, 0, SF_SCREEN_W, SF_SCREEN_H };
 
 static void t_glScissor(GLint x, GLint y, GLint w, GLint h)
@@ -132,6 +136,10 @@ static void t_glGetIntegerv(GLenum pname, GLint *out)
             out[i] = s_scissor[i];
         return;
     }
+    if (pname == GL_ARRAY_BUFFER_BINDING_ || pname == GL_ELEMENT_ARRAY_BUFFER_BINDING_) {
+        out[0] = (GLint)(pname == GL_ARRAY_BUFFER_BINDING_ ? s_bound_array : s_bound_element);
+        return;
+    }
     if (!fn)
         fn = (void (*)(GLenum, GLint *))gl_proc("glGetIntegerv");
     if (fn)
@@ -141,111 +149,214 @@ static void t_glGetIntegerv(GLenum pname, GLint *out)
 /* --- buffer objects -------------------------------------------------------
  * The zone 2+ arenas stream their sprites through one vertex buffer:
  * glBufferSubData, draw, glBufferSubData over the same bytes, draw...
- * vitaGL records draws and runs them at the end of the frame from the
- * buffer's single copy, so every quad took the last vertices written:
- * the right images in the wrong places. Here each buffer keeps a RAM
- * copy, and a partial update re-uploads it whole with glBufferData,
- * which gives vitaGL new memory and retires the old after the GPU is
- * done with it. */
-#define GL_ARRAY_BUFFER         0x8892
-#define GL_ELEMENT_ARRAY_BUFFER 0x8893
-#define MAX_BUFFERS 128
+ * vitaGL does not take that: it resolves a buffer-backed vertex pointer
+ * to memory when glVertexAttribPointer is called and runs the frame's
+ * draws later, so every quad drew from the last vertices written (or,
+ * re-uploaded, from memory the pointer no longer followed): the arena's
+ * own images as a patchwork over stale frames.
+ *
+ * So vitaGL never sees a buffer object. Buffers live here in RAM (bind,
+ * data and sub-data only update them), and each draw passes the bound
+ * buffers to vitaGL as client arrays: attribute pointers and indices
+ * resolved into the RAM copies at draw time. vitaGL copies client arrays
+ * per draw, which is the behaviour the game expects. */
+#define GL_ARRAY_BUFFER                 0x8892
+#define GL_ELEMENT_ARRAY_BUFFER         0x8893
+#define MAX_ATTRIBS 16
 
-typedef struct { GLuint id; GLenum usage; uint32_t size, used; uint8_t *data; } sf_buffer;
-static sf_buffer s_buffers[MAX_BUFFERS];
-static GLuint s_bound_array, s_bound_element;
+typedef struct { GLuint id; uint32_t size; uint8_t *data; } sf_buffer;
+typedef struct { GLuint buffer; GLint size; GLenum type; GLint norm; GLint stride; uintptr_t offset; } sf_attrib;
+static sf_attrib s_attribs[MAX_ATTRIBS];
+
+/* Buffers by name: an open-addressing table that doubles at half full
+ * (the game keeps hundreds). Deleted slots become tombstones (id ~0). */
+#define TOMB ((GLuint)~0u)
+static sf_buffer *s_buffers;
+static uint32_t s_buf_cap, s_buf_used;   /* used counts tombstones too */
+
+static uint32_t buf_hash(GLuint id)
+{
+    return (uint32_t)id * 2654435761u;
+}
+
+static sf_buffer *buf_slot(GLuint id, int create)
+{
+    uint32_t i, mask = s_buf_cap - 1;
+    sf_buffer *tomb = NULL;
+    if (s_buf_cap) {
+        for (i = buf_hash(id) & mask;; i = (i + 1) & mask) {
+            sf_buffer *e = &s_buffers[i];
+            if (e->id == id)
+                return e;
+            if (e->id == TOMB && !tomb)
+                tomb = e;
+            if (!e->id)
+                break;
+        }
+    }
+    if (!create)
+        return NULL;
+    if ((s_buf_used + 1) * 2 > s_buf_cap) {
+        uint32_t old_cap = s_buf_cap, j;
+        sf_buffer *old = s_buffers, *grown;
+        uint32_t cap = old_cap ? old_cap * 2 : 512;
+        if (!(grown = calloc(cap, sizeof(*grown)))) {
+            LOGE("gl: no memory for %u buffer slots", (unsigned)cap);
+            return NULL;
+        }
+        s_buffers = grown;
+        s_buf_cap = cap;
+        s_buf_used = 0;
+        for (j = 0; j < old_cap; j++)
+            if (old[j].id && old[j].id != TOMB) {
+                for (i = buf_hash(old[j].id) & (cap - 1); s_buffers[i].id; i = (i + 1) & (cap - 1))
+                    ;
+                s_buffers[i] = old[j];
+                s_buf_used++;
+            }
+        free(old);
+        return buf_slot(id, 1);
+    }
+    if (!tomb) {
+        for (i = buf_hash(id) & (s_buf_cap - 1); s_buffers[i].id; i = (i + 1) & (s_buf_cap - 1))
+            ;
+        tomb = &s_buffers[i];
+        s_buf_used++;
+    }
+    memset(tomb, 0, sizeof(*tomb));
+    tomb->id = id;
+    return tomb;
+}
+
+static sf_buffer *buffer_find(GLuint id, int create)
+{
+    return id && id != TOMB ? buf_slot(id, create) : NULL;
+}
 
 static sf_buffer *buffer_for(GLenum target, int create)
 {
-    GLuint id = target == GL_ARRAY_BUFFER ? s_bound_array
-              : target == GL_ELEMENT_ARRAY_BUFFER ? s_bound_element : 0;
-    sf_buffer *free_slot = NULL;
-    int i;
-    if (!id)
-        return NULL;
-    for (i = 0; i < MAX_BUFFERS; i++) {
-        if (s_buffers[i].id == id)
-            return &s_buffers[i];
-        if (!s_buffers[i].id && !free_slot)
-            free_slot = &s_buffers[i];
-    }
-    if (create && free_slot) {
-        memset(free_slot, 0, sizeof(*free_slot));
-        free_slot->id = id;
-        return free_slot;
-    }
-    return NULL;
+    return buffer_find(target == GL_ARRAY_BUFFER ? s_bound_array
+                       : target == GL_ELEMENT_ARRAY_BUFFER ? s_bound_element : 0, create);
 }
 
 static void t_glBindBuffer(GLenum target, GLuint id)
 {
-    static void (*fn)(GLenum, GLuint);
-    if (!fn)
-        fn = (void (*)(GLenum, GLuint))gl_proc("glBindBuffer");
     if (target == GL_ARRAY_BUFFER)
         s_bound_array = id;
     else if (target == GL_ELEMENT_ARRAY_BUFFER)
         s_bound_element = id;
-    if (fn)
-        fn(target, id);
 }
 
 static void t_glBufferData(GLenum target, GLint size, const void *data, GLenum usage)
 {
-    static void (*fn)(GLenum, GLint, const void *, GLenum);
     sf_buffer *b = buffer_for(target, 1);
-    if (!fn)
-        fn = (void (*)(GLenum, GLint, const void *, GLenum))gl_proc("glBufferData");
-    if (b) {
-        uint8_t *p = size > 0 ? realloc(b->data, (size_t)size) : NULL;
-        if (p || size <= 0) {
-            b->data = p;
-            b->size = size > 0 ? (uint32_t)size : 0;
-            b->usage = usage;
-            b->used = data ? b->size : 0;
-            if (p && data)
-                memcpy(p, data, (size_t)size);
-        }
+    uint8_t *p;
+    if (!b || size < 0)
+        return;
+    p = realloc(b->data, size ? (size_t)size : 1);
+    if (!p) {
+        LOGE("gl: no memory for a %d byte buffer", (int)size);
+        return;
     }
-    if (fn)
-        fn(target, size, data, usage);
+    b->data = p;
+    b->size = (uint32_t)size;
+    if (data)
+        memcpy(p, data, (size_t)size);
 }
 
 static void t_glBufferSubData(GLenum target, GLint off, GLint size, const void *data)
 {
-    static void (*sub)(GLenum, GLint, GLint, const void *);
-    static void (*whole)(GLenum, GLint, const void *, GLenum);
     sf_buffer *b = buffer_for(target, 0);
-    if (!sub) {
-        sub = (void (*)(GLenum, GLint, GLint, const void *))gl_proc("glBufferSubData");
-        whole = (void (*)(GLenum, GLint, const void *, GLenum))gl_proc("glBufferData");
-    }
-    if (b && b->data && whole && data && off >= 0 && size >= 0 &&
-        (uint32_t)off + (uint32_t)size <= b->size) {
+    if (b && b->data && data && off >= 0 && size >= 0 && (uint32_t)off + (uint32_t)size <= b->size)
         memcpy(b->data + off, data, (size_t)size);
-        if ((uint32_t)(off + size) > b->used)
-            b->used = (uint32_t)(off + size);
-        whole(target, (GLint)b->used, b->data, b->usage);
-        return;
-    }
-    if (sub)
-        sub(target, off, size, data);
 }
 
 static void t_glDeleteBuffers(GLint n, const GLuint *ids)
 {
     static void (*fn)(GLint, const GLuint *);
-    int i, j;
+    int i;
     if (!fn)
         fn = (void (*)(GLint, const GLuint *))gl_proc("glDeleteBuffers");
-    for (i = 0; i < n; i++)
-        for (j = 0; j < MAX_BUFFERS; j++)
-            if (s_buffers[j].id && s_buffers[j].id == ids[i]) {
-                free(s_buffers[j].data);
-                memset(&s_buffers[j], 0, sizeof(s_buffers[j]));
-            }
+    for (i = 0; i < n; i++) {
+        sf_buffer *b = buffer_find(ids[i], 0);
+        if (b) {
+            free(b->data);
+            b->data = NULL;
+            b->size = 0;
+            b->id = TOMB;
+        }
+        if (ids[i] == s_bound_array)
+            s_bound_array = 0;
+        if (ids[i] == s_bound_element)
+            s_bound_element = 0;
+    }
     if (fn)
         fn(n, ids);
+}
+
+static void (*s_attrib_pointer)(GLuint, GLint, GLenum, GLint, GLint, const void *);
+
+static void t_glVertexAttribPointer(GLuint idx, GLint size, GLenum type, GLint norm, GLint stride,
+                                    const void *ptr)
+{
+    if (!s_attrib_pointer)
+        s_attrib_pointer = (void (*)(GLuint, GLint, GLenum, GLint, GLint, const void *))
+                           gl_proc("glVertexAttribPointer");
+    if (idx < MAX_ATTRIBS) {
+        s_attribs[idx].buffer = s_bound_array;
+        s_attribs[idx].size = size;
+        s_attribs[idx].type = type;
+        s_attribs[idx].norm = norm;
+        s_attribs[idx].stride = stride;
+        s_attribs[idx].offset = (uintptr_t)ptr;
+    }
+    if (s_bound_array) {
+        sf_buffer *b = buffer_find(s_bound_array, 0);
+        ptr = b && b->data ? b->data + (uintptr_t)ptr : NULL;
+    }
+    if (s_attrib_pointer && (ptr || !s_bound_array))
+        s_attrib_pointer(idx, size, type, norm, stride, ptr);
+}
+
+/* Point every buffer-sourced attribute at its buffer's RAM copy now. */
+static void resolve_attribs(void)
+{
+    int i;
+    if (!s_attrib_pointer)
+        return;
+    for (i = 0; i < MAX_ATTRIBS; i++) {
+        sf_attrib *a = &s_attribs[i];
+        sf_buffer *b;
+        if (!a->buffer || !(b = buffer_find(a->buffer, 0)) || !b->data)
+            continue;
+        s_attrib_pointer((GLuint)i, a->size, a->type, a->norm, a->stride, b->data + a->offset);
+    }
+}
+
+static void t_glDrawArrays(GLenum mode, GLint first, GLint count)
+{
+    static void (*fn)(GLenum, GLint, GLint);
+    if (!fn)
+        fn = (void (*)(GLenum, GLint, GLint))gl_proc("glDrawArrays");
+    resolve_attribs();
+    if (fn)
+        fn(mode, first, count);
+}
+
+static void t_glDrawElements(GLenum mode, GLint count, GLenum type, const void *indices)
+{
+    static void (*fn)(GLenum, GLint, GLenum, const void *);
+    if (!fn)
+        fn = (void (*)(GLenum, GLint, GLenum, const void *))gl_proc("glDrawElements");
+    resolve_attribs();
+    if (s_bound_element) {
+        sf_buffer *b = buffer_find(s_bound_element, 0);
+        if (!b || !b->data)
+            return;
+        indices = b->data + (uintptr_t)indices;
+    }
+    if (fn)
+        fn(mode, count, type, indices);
 }
 
 /* --- GL error tracing ----------------------------------------------------
@@ -334,6 +445,31 @@ static void t_glTexImage2D(GLenum t, GLint l, GLint fi, GLsizei w, GLsizei h, GL
     check_upload("glTexImage2D", w, h, f, ty);
 }
 
+/* Diagnostics: GLES lets a program bind texture names it never got from
+ * glGenTextures; vitaGL would then hand the same name out again. Every
+ * name generated is marked, and the first bind of an unmarked one is
+ * logged, as is a name generated twice without a delete in between. */
+#define MAX_TEX_NAMES 8192
+static uint8_t s_tex_state[MAX_TEX_NAMES];   /* 1 generated, 2 reported */
+
+static void t_glGenTextures(GLint n, GLuint *ids)
+{
+    static void (*fn)(GLint, GLuint *);
+    int i;
+    if (!fn)
+        fn = (void (*)(GLint, GLuint *))gl_proc("glGenTextures");
+    if (!fn)
+        return;
+    fn(n, ids);
+    for (i = 0; i < n; i++) {
+        if (ids[i] >= MAX_TEX_NAMES)
+            continue;
+        if (s_tex_state[ids[i]] == 1)
+            LOGW("texture %u generated again while in use", (unsigned)ids[i]);
+        s_tex_state[ids[i]] = 1;
+    }
+}
+
 static void t_glBindTexture(GLenum target, GLuint tex)
 {
     static void (*fn)(GLenum, GLuint);
@@ -343,6 +479,10 @@ static void t_glBindTexture(GLenum target, GLuint tex)
         looked = 1;
     }
     sf_hud_tex_bound(tex);
+    if (tex && tex < MAX_TEX_NAMES && !s_tex_state[tex]) {
+        s_tex_state[tex] = 2;
+        LOGW("texture %u bound without glGenTextures", (unsigned)tex);
+    }
     if (fn)
         fn(target, tex);
 }
@@ -356,6 +496,12 @@ static void t_glDeleteTextures(GLsizei n, const GLuint *ids)
         looked = 1;
     }
     sf_hud_tex_deleted(n, ids);
+    {
+        GLsizei i;
+        for (i = 0; i < n; i++)
+            if (ids[i] < MAX_TEX_NAMES)
+                s_tex_state[ids[i]] = 0;
+    }
     if (fn)
         fn(n, ids);
 }
@@ -587,6 +733,7 @@ const sf_export sf_exports_gl[] = {
     { "glTexImage2D", (void *)t_glTexImage2D },
     { "glDeleteTextures", (void *)t_glDeleteTextures },
     { "glBindTexture", (void *)t_glBindTexture },
+    { "glGenTextures", (void *)t_glGenTextures },
     { "glTexSubImage2D", (void *)t_glTexSubImage2D },
     { "glCompressedTexImage2D", (void *)t_glCompressedTexImage2D },
     { "glScissor", (void *)t_glScissor },
@@ -594,6 +741,9 @@ const sf_export sf_exports_gl[] = {
     { "glBufferData", (void *)t_glBufferData },
     { "glBufferSubData", (void *)t_glBufferSubData },
     { "glDeleteBuffers", (void *)t_glDeleteBuffers },
+    { "glVertexAttribPointer", (void *)t_glVertexAttribPointer },
+    { "glDrawArrays", (void *)t_glDrawArrays },
+    { "glDrawElements", (void *)t_glDrawElements },
     { "glGetFloatv", (void *)t_glGetFloatv },
     { "glGetIntegerv", (void *)t_glGetIntegerv },
 
