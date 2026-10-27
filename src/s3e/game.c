@@ -31,9 +31,19 @@ void sf_gstring_free(gstring *s)
         ((obj_fn)G(0x4a78c7cc))(s->begin);
 }
 
-void sf_game_retain(void *node)
+void sf_game_autorelease(void *obj)
 {
-    ((obj_fn)G(0x4a032dec))(node);
+    ((obj_fn)G(0x4a032dec))(obj);
+}
+
+void sf_game_retain(void *obj)
+{
+    ((obj_fn)G(0x4a032ddc))(obj);
+}
+
+void sf_game_release(void *obj)
+{
+    ((obj_fn)G(0x4a032db4))(obj);
 }
 
 /* Every UI object has its listener base at +0x114; the delegate is bound

@@ -12,8 +12,8 @@
  * level in the beige skin, and RESET PROGRESS in the dark one. RESET
  * PROGRESS opens the game's SimpleDialog (the clans' "Are you sure..."
  * prompt) and only its YES runs the original Clear: delete the save and
- * quit. The panel's container also carries the author's watermark, so it
- * shows and hides with the panel.
+ * quit. While the panel is open the shop's item scroll carries the
+ * author's watermark.
  */
 #include "s3e/game.h"
 #include "loader/s3e_loader.h"
@@ -39,7 +39,7 @@ typedef void **(*list_fn)(void);                                         /* 0x4a
 typedef void  (*add_currency_fn)(void *profile, void *currency, int amount); /* 0x4a28a23c */
 typedef uint32_t (*level_xp_fn)(void *profile);                          /* 0x4a287f24 */
 typedef int   (*add_xp_fn)(void *profile, uint32_t xp);                  /* 0x4a28fe44 */
-typedef void  (*reorder_fn)(void *node, void *child, int z);
+typedef void  (*add_child_z_fn)(void *node, void *child, int z);
 
 /* --- actions --------------------------------------------------------------- */
 
@@ -116,7 +116,7 @@ static void *make_button(uint8_t *self, int style, const char *text, int id)
                                            *(void **)(self + 0x128), 0);
     void ***list = (void ***)(self + 0x210);   /* begin, end, capacity */
 
-    sf_game_retain(btn);
+    sf_game_autorelease(btn);
     sf_game_listen(btn, self, on_click);
     ((setb_fn)VT(btn, 0x1d0))(btn, 0);
 
@@ -135,31 +135,21 @@ static void *make_button(uint8_t *self, int style, const char *text, int id)
     return btn;
 }
 
-/* The author's GitHub name, centred on the shop's item scroll (emptied
- * while the panel is open): a child of the panel's container, so it shows
- * and hides with the panel, offset left onto the scroll. The scroll is
- * drawn after the panel's column, so show_panel raises the column. */
-#define WATERMARK_X     (-341.0f)
-#define WATERMARK_Y     0.0f
+/* The author's GitHub name, centred on the shop's item scroll while the
+ * panel is open. The scroll is drawn over the panel's column, so the mark
+ * hangs on the shop screen itself (vtable 0x4a8ec910, design units from
+ * the bottom left) above everything, and follows the panel: shown by
+ * show_panel, hidden by hide_panel. It is retained here, so it outlives
+ * each shop (a dying shop only detaches it). */
+#define WATERMARK_X     675.0f
+#define WATERMARK_Y     405.0f
 #define WATERMARK_SCALE 0.75f
 
-static void add_watermark(void *box)
-{
-    void *mark = sf_game_sprite("textures/sfport/watermark.png");
-
-    if (!mark) {
-        LOGW("cheats: watermark not created");
-        return;
-    }
-    ((setf_fn)VT(mark, NODE_SET_SCALE))(mark, WATERMARK_SCALE);
-    ((setxy_fn)VT(mark, NODE_SET_POS))(mark, WATERMARK_X, WATERMARK_Y);
-    ((add_child_fn)VT(box, NODE_ADD_CHILD))(box, mark);
-}
+static void *s_mark;
 
 /* Replaces slot 0x248 (0x4a639fc8), which shows the panel. The panel
- * hangs in the shop's right-hand column (vtable 0x4a8eb7f0), a child of
- * the shop screen (0x4a8ec910) like the item scroll; the column is moved
- * above its siblings so the watermark is drawn over the scroll. */
+ * hangs in the shop's right-hand column (0x4a8eb7f0), a child of the shop
+ * screen. */
 static void show_panel(void *self)
 {
     void *column, *shop;
@@ -167,8 +157,32 @@ static void show_panel(void *self)
     ((obj_fn)G(0x4a639fc8))(self);
     column = ((node_get_fn)VT(self, NODE_GET_PARENT))(self);
     shop = column ? ((node_get_fn)VT(column, NODE_GET_PARENT))(column) : NULL;
-    if (shop)
-        ((reorder_fn)VT(shop, NODE_REORDER))(shop, column, 1000);
+    if (!shop)
+        return;
+    if (!s_mark) {
+        if (!(s_mark = sf_game_sprite("textures/sfport/watermark.png"))) {
+            LOGW("cheats: watermark not created");
+            return;
+        }
+        sf_game_retain(s_mark);
+        ((setf_fn)VT(s_mark, NODE_SET_SCALE))(s_mark, WATERMARK_SCALE);
+        ((setxy_fn)VT(s_mark, NODE_SET_POS))(s_mark, WATERMARK_X, WATERMARK_Y);
+    }
+    if (((node_get_fn)VT(s_mark, NODE_GET_PARENT))(s_mark) != shop) {
+        if (((node_get_fn)VT(s_mark, NODE_GET_PARENT))(s_mark))
+            ((obj_fn)VT(s_mark, NODE_REMOVE_FROM_PARENT))(s_mark);
+        ((add_child_z_fn)VT(shop, NODE_ADD_CHILD_Z))(shop, s_mark, 1000);
+    }
+    ((setb_fn)VT(s_mark, NODE_SET_VISIBLE))(s_mark, 1);
+}
+
+/* Replaces slot 0x280 (0x4a63a9f8), which hides whatever the panel shows;
+ * every show calls it first. */
+static void hide_panel(void *self)
+{
+    ((obj_fn)G(0x4a63a9f8))(self);
+    if (s_mark)
+        ((setb_fn)VT(s_mark, NODE_SET_VISIBLE))(s_mark, 0);
 }
 
 /* Replaces slot 0x290 (0x4a63a090): the buttons hang below the title
@@ -189,7 +203,7 @@ static void build_panel(uint8_t *self)
 
     ((obj_fn)G(0x4a196870))(box);
     *(void **)(self + 0x20c) = box;
-    sf_game_retain(box);
+    sf_game_autorelease(box);
     ((setb_fn)VT(box, 0x90))(box, 0);
     for (i = 0; i < sizeof(buttons) / sizeof(buttons[0]); i++) {
         void *btn = make_button(self, buttons[i].style, buttons[i].text, buttons[i].id);
@@ -198,7 +212,6 @@ static void build_panel(uint8_t *self)
         y = ((getf_fn)VT(btn, 0x68))(btn);
         ((add_child_fn)VT(box, 0xc8))(box, btn);
     }
-    add_watermark(box);
     ((add_child_fn)VT(self, 0xc8))(self, box);
 }
 
@@ -222,6 +235,11 @@ void sf_cheats_install(const sf_s3e_module *mod)
         *slot = (uint32_t)(uintptr_t)show_panel;
     else
         LOGW("cheats: panel show slot holds %#x; left alone", (unsigned)*slot);
+    slot = (uint32_t *)G(0x4a8eaf48 + 0x280);
+    if (*slot == (uint32_t)(uintptr_t)G(0x4a63a9f8))
+        *slot = (uint32_t)(uintptr_t)hide_panel;
+    else
+        LOGW("cheats: panel hide slot holds %#x; left alone", (unsigned)*slot);
 
     /* The panel's title: "Cheats" through a PC-relative literal that
      * 0x4a63a010 adds to its pc (0x4a63a018). */

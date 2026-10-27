@@ -42,15 +42,20 @@ typedef void  (*add_child_fn)(void *node, void *child);
 /* CCNode virtuals (cocos2d-x 2.x order, checked against their callers). */
 enum {
     NODE_SET_SCALE = 0x40, NODE_SET_POS = 0x54, NODE_SET_X = 0x5c, NODE_GET_X = 0x60,
-    NODE_SET_Y = 0x64, NODE_GET_Y = 0x68, NODE_GET_SIZE = 0x8c, NODE_SET_VISIBLE = 0x90,
-    NODE_ADD_CHILD = 0xc8, NODE_GET_PARENT = 0xe4, NODE_REORDER = 0x108,
+    NODE_SET_Y = 0x64, NODE_GET_Y = 0x68, NODE_GET_SIZE = 0x8c, NODE_SET_VISIBLE = 0x90, NODE_IS_VISIBLE = 0x94,
+    NODE_ADD_CHILD = 0xc8, NODE_ADD_CHILD_Z = 0xcc, NODE_GET_PARENT = 0xe4,
+    NODE_REMOVE_FROM_PARENT = 0xe8,
 };
 
 void sf_game_init(const struct sf_s3e_module *mod);
 
 void  sf_gstring(gstring *s, const char *text);
 void  sf_gstring_free(gstring *s);
-void  sf_game_retain(void *node);
+/* CCObject: autorelease is what the game calls on everything it creates
+ * with new (0x4a032dec); retain/release keep a node past its parent. */
+void  sf_game_autorelease(void *obj);
+void  sf_game_retain(void *obj);
+void  sf_game_release(void *obj);
 /* Calls fn(self, &event) when button is tapped; event's first word is the
  * button's id. self is the object whose listener base is at +0x114. */
 void  sf_game_listen(void *button, void *self, void (*fn)(void *self, int *event));
