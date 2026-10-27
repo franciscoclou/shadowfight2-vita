@@ -171,3 +171,51 @@ the bytes supplied, fewer than `len` at the end. `DecompRead(h, buf,
   s3eDeviceYield(remaining ms).
 - scripts/func_strings.py <start> <end> lists the PC-relative strings a
   function uses, which Ghidra shows as DAT_ + constant.
+
+## Save hashes (anti-tamper)
+
+Every file the game caches in ram:// has `<file>.hash`: the MD5 (hex) of
+`"<path>" + contents + salt`, e.g. `"assets/packs.xml" + ... `. The file
+holds two lines; a fresh write has the same digest on both. The salt is
+the device identifier: s3eDeviceUniqueID, or s3eDeviceGetString(25) for an
+old users.xml (GameLoader::getSalt, set at 0x4a69df90 through 0x4a1f65f0
+into the string at 0x4a8fab4c; the byte 0x4a8f3f2d says to prepend the path).
+
+- 0x4a1fa4f8 MD5(buf, len) -> hex std::string; 0x4a1f6858 builds the input.
+- 0x4a1f8e4c saves an XML document and its .hash; 0x4a1f88f8 re-reads a file,
+  checks it against its .hash (0x4a1f849c) and rewrites it, returning 0 on a
+  mismatch.
+- 0x4a25e6f0 runs that check over every cached file (list at 0x4a90d018);
+  one failure wipes the ram:// cache, packs.xml and settings.xml included.
+  users.xml and localSettings.bin are not touched.
+
+## Content packs
+
+Zone 2 onwards (Hermit's chess_yard, every later location and boss), the
+newer models, raids and clans are Derbh .dz packs the game downloads; the
+APK has none of them. ?PackAssert(NAME).Availability in the quests only
+looks NAME up in ram://assets/packs.xml (`<Packs><Pack Name Url Version
+Attach Hash [EndDate]/>`, parsed at 0x4a260a30 into the list at
+manager+0xb90, manager 0x4a266ed4, lookup 0x4a25e490).
+
+- Boot attacher 0x4a69ece0: for each Attach="1" pack, path =
+  0x4a1fc730(Name) + ".dz". The prefix is "cache://" on iOS (OS 14), none
+  on Android, so the file is found ram then rom. It MD5s the whole file
+  (0x4a1fa6fc, 1 KB freads) against Hash, then attaches it with
+  dzArchiveAttach (0x4a752ef8). The call at 0x4a69f028 is patched to the
+  string copy 0x4a004084, so Hash holds the path instead.
+- 0x4a69e924 detaches and deletes every Attach="1" pack and packs.xml.
+- 0x4a265a78 adds a pack after a download (0x4a26702c).
+- Derbh's open (0x4a753300) tries the attached archives newest first. Once
+  files.dz's data is cached in ram the game reads that, but packs keep
+  answering first: a pack file with the same path as a cached one is read
+  instead and fails its .hash. The 2017 raid pack has 11 such model files,
+  older than 1.9.38's; scripts/fix_packs.py hides them.
+- Pack URLs and MD5s: Nekki's configs config_SF2.xml,
+  config_shadowfight_test.xml, config_shadowfight_raid_stage.xml and
+  config_shadowfight_raid_dev.xml under
+  assets.nekkimobile.ru/shadowfight/data/ (plain HTTP still works; the
+  HTTPS certificate has expired).
+- Derbh header: "DTRZ", u16 files, u16 dirs, u8 version, file names, dir
+  names ('\'-separated), then per file a u16 dir index (0 = root) and chunk
+  ids up to 0xffff. Every pack carries its own settings.xml.

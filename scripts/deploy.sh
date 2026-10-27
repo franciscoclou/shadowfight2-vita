@@ -29,14 +29,23 @@ cat <<TXT
  C) Game data -- once, and again whenever ./scripts/prepare_game.sh
     changes what it produces (the decompressed .s3e and the
     game's assets/ tree, ~90 MB). Existing files are overwritten.
-    ram/ is skipped: it holds the save data the PC harness wrote.
+    ram/ is skipped: it holds the save data the PC harness wrote,
+    and so are the content packs (option D).
 
-    cd "$GAME_OUT" && find . -path ./ram -prune -o -type f -print |
+    cd "$GAME_OUT" && find . -path ./ram -prune -o -type f ! -name '*.dz' -print |
       while read -r f; do
         echo "\${f#./}"
         curl -sS --ftp-create-dirs -T "\$f" "$FTP_URL/$VITA_DATA_DIR/\${f#./}" ||
           echo "!! failed: \$f"
       done; cd - >/dev/null
+
+ D) Content packs -- once (~300 MB). Hermit's zone and everything
+    after it. Fetch them first with ./scripts/fetch_packs.sh.
+
+    for f in "$GAME_OUT"/*.dz; do
+      echo "\${f##*/}"
+      curl -sS -T "\$f" "$FTP_URL/$VITA_DATA_DIR/\${f##*/}" || echo "!! failed: \$f"
+    done
 
  Prerequisites on the Vita (once): kubridge.skprx in ux0:tai/config.txt
  under *KERNEL, and ur0:data/libshacccg.suprx extracted.

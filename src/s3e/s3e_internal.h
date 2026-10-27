@@ -52,6 +52,9 @@ void sf_prof_frame(void);   /* once per presented frame */
 struct sf_s3e_module;
 void sf_apply_patches(const struct sf_s3e_module *mod);
 
+/* --- packs.c --- */
+void sf_packs_register(void);   /* before the entry point: list the packs in packs.xml */
+
 /* --- hud.c --- */
 void sf_hud_file_opened(const char *name);
 const void *sf_hud_tex_image(int32_t level, int32_t w, int32_t h, uint32_t fmt, uint32_t type,

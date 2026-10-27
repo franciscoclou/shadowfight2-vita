@@ -192,6 +192,7 @@ int main(int argc, char **argv)
     LOGI("%d imports left unresolved", sf_game.unresolved);
     sf_device_init(sf_game.config);
     sf_apply_patches(&sf_game);
+    sf_packs_register();
 
     if (getenv("SF_PROFILE") && atoi(getenv("SF_PROFILE")))
         prof_start();

@@ -10,8 +10,14 @@
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 
+# Keep the content packs from ./scripts/fetch_packs.sh: they are ~300 MB
+# from Nekki's CDN and nothing here changes them.
+PACKS_KEEP="$(mktemp -d)"
+trap 'rm -rf "$PACKS_KEEP"' EXIT
+mv "$GAME_OUT"/*.dz "$PACKS_KEEP"/ 2>/dev/null || true
 rm -rf "$GAME_OUT"
 mkdir -p "$GAME_OUT"
+mv "$PACKS_KEEP"/*.dz "$GAME_OUT"/ 2>/dev/null || true
 
 echo ">> ShadowFight2.s3e"
 python3 -I "$REPO_ROOT/scripts/unpack_s3e.py" \

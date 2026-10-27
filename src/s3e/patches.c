@@ -20,6 +20,17 @@ typedef struct {
     uint32_t orig, patched;
 } sf_patch;
 
+/* Always applied: fixes for running offline on the Vita.
+ *
+ * pack check: the boot pack attacher (0x4a69ece0) MD5s every attached pack
+ * through 1 KB freads (0x4a1fa6fc) to compare with its Hash attribute,
+ * ~320 MB on every launch. Calling the string copy (0x4a004084, same
+ * (out, in) shape) instead compares the pack's path, which packs.c writes
+ * as the Hash. */
+static const sf_patch s_always[] = {
+    { "pack check", 0x4a69f028, 0xebed6db3 /* bl 0x4a1fa6fc */, 0xebe59415 /* bl 0x4a004084 */ },
+};
+
 static const sf_patch s_cheats[] = {
     { "debug flag on", 0x4a67aeac, 0xe5c08000 /* strb r8, [r0] */, 0xe5c0b000 /* strb fp, [r0] */ },
 };
@@ -42,6 +53,7 @@ static void apply(const sf_s3e_module *mod, const sf_patch *p, size_t n)
 
 void sf_apply_patches(const sf_s3e_module *mod)
 {
+    apply(mod, s_always, sizeof(s_always) / sizeof(s_always[0]));
     if (sf_option_cheats())
         apply(mod, s_cheats, sizeof(s_cheats) / sizeof(s_cheats[0]));
 }

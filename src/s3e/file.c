@@ -476,6 +476,7 @@ static int32_t sf_s3eFileDelete(const char *name)
 {
     char path[512];
     resolve(name, path, sizeof(path), 1);
+    LOGV("s3eFileDelete(%s) -> %s", name, path);
     return remove(path) == 0 ? S3E_RESULT_SUCCESS : S3E_RESULT_ERROR;
 }
 
