@@ -1,14 +1,7 @@
-/* Optional patches to the game's code, applied after loading and before the
- * entry point runs. Each patch checks that the word it replaces is still
- * the expected original instruction, so a different game build is left
- * alone instead of being corrupted.
- *
- * cheats (controls.txt "cheats = 1"): the AssemblySettings reader (link
- * 0x4a67ae5c) clears the debug flag (accessor 0x4a1c805c) on every boot,
- * the release build's way of hiding developer tools. Storing r11 (which
- * holds 1 there) instead of r8 (0) leaves debug mode on; the shop then
- * builds its "Hanger" button (0x4a6568d0) to the developer panel with
- * Money +1m, Bonus +1m (gems), Level +1 and Currency +1m.
+/* Patches to the game's code, applied after loading and before the entry
+ * point runs. Each patch checks that the word it replaces is still the
+ * expected original instruction, so a different game build is left alone
+ * instead of being corrupted.
  */
 #include "s3e/s3e_internal.h"
 #include "loader/s3e_loader.h"
@@ -31,8 +24,19 @@ static const sf_patch s_always[] = {
     { "pack check", 0x4a69f028, 0xebed6db3 /* bl 0x4a1fa6fc */, 0xebe59415 /* bl 0x4a004084 */ },
 };
 
+/* cheats (controls.txt "cheats = 1", the default).
+ *
+ * shop cheats: the shop's constructor (0x4a65fc28) copies the debug flag
+ * (accessor 0x4a1c805c) into its own byte +0x134, and only builds its
+ * "Hanger" button to the cheats panel (0x4a656444) when that is set. The
+ * flag itself stays off: it is what draws the fps and timing text and the
+ * other screens' debug buttons. cheats.c restyles the panel.
+ *
+ * unlimited energy: the user's flag +0x2a8, set when the Unlimited_Energy
+ * item is bought (0x4a285fa4), read through 0x4a285f9c. */
 static const sf_patch s_cheats[] = {
-    { "debug flag on", 0x4a67aeac, 0xe5c08000 /* strb r8, [r0] */, 0xe5c0b000 /* strb fp, [r0] */ },
+    { "shop cheats", 0x4a65fd58, 0xe5d02000 /* ldrb r2, [r0] */, 0xe3a02001 /* mov r2, #1 */ },
+    { "unlimited energy", 0x4a285f9c, 0xe5d002a8 /* ldrb r0, [r0, #0x2a8] */, 0xe3a00001 /* mov r0, #1 */ },
 };
 
 static void apply(const sf_s3e_module *mod, const sf_patch *p, size_t n)
@@ -54,6 +58,8 @@ static void apply(const sf_s3e_module *mod, const sf_patch *p, size_t n)
 void sf_apply_patches(const sf_s3e_module *mod)
 {
     apply(mod, s_always, sizeof(s_always) / sizeof(s_always[0]));
-    if (sf_option_cheats())
+    if (sf_option_cheats()) {
         apply(mod, s_cheats, sizeof(s_cheats) / sizeof(s_cheats[0]));
+        sf_cheats_install(mod);
+    }
 }

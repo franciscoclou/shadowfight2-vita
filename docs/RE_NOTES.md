@@ -226,3 +226,30 @@ Quest CrashNotification (quests.xml) fires at SessionStart when
 ?SysInfo().LastSessionCrashed and DeviceTotalMem <= 512 (MB); its OK
 button sets LOW graphics. Closing the app from the LiveArea counts as a
 crash, so s3eDeviceGetInt reports 640 MB (RAM + CDRAM).
+
+## Shop cheats panel
+
+- Shop constructor 0x4a65fc28 copies the debug flag into shop+0x134; the
+  shop builds its "Hanger" button to the panel only then (0x4a656444).
+- The panel is the shop's InfoSprite (vtable 0x4a8eaf48). Slot 0x248
+  (0x4a639fc8) shows it with the title "Cheats" (literal at 0x4a63a08c);
+  slot 0x290 (0x4a63a090) builds the buttons below the title (+0x140) in a
+  container (+0x20c); slot 0x294 (0x4a63d248) is the button factory, which
+  keeps every button in the vector at +0x210.
+- Buttons: 0x4a692ca4(style, text, id, 0xffffff80, 127.5f, 255.0f, font,
+  0). Styles index the 9-slice skins at 0x4a8f4088: 0 Dark, 1 White,
+  2 Green, 3 Silver, 4 Yellow, 5 Beige. Clicks: 0x4a2025c4(btn+0x114, 2,
+  &{obj, fn, adj}) calls fn(obj + adj/2, &event), event first word = id.
+- Original actions (0x4a63a3e0): 0 Clear = scene (0x4a22c904) slot 7, then
+  0x4a25e424 (delete the save files, quit via 0x4a6ad268); 1
+  0x4a27037c(1000000, 0) coins; 2 0x4a2703c4(1000000, 0, 7, 0) gems;
+  3 level +1; 4 for each currency in 0x4a6af74c(): 0x4a28a23c(0x4a27b924(),
+  id, 1000000); 5 reset the ad counter. Each ends with 0x4a6ac6a4.
+- Unlimited energy is the user's byte +0x2a8: set 0x4a285fa4, read
+  0x4a285f9c.
+- Dialogs: 0x4a50f6a4(&title, &text, &ok, &cancel, 0, 1, 0, 0, 0, &"", 0,
+  0) shows a SimpleDialog (title and text are plain, the buttons are
+  localisation keys; an unknown key shows as "err_KEY"). Its first button
+  is at +0x180 after __dynamic_cast (0x4a791850) from DialogObject
+  (0x4a8cc5ac) to SimpleDialog (0x4a8b8888). The dialog factory is
+  0x4a51c1b0; type 4 is the quit dialog (ExitDialog, 0x4a376e74).

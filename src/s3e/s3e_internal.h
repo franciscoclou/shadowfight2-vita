@@ -52,6 +52,9 @@ void sf_prof_frame(void);   /* once per presented frame */
 struct sf_s3e_module;
 void sf_apply_patches(const struct sf_s3e_module *mod);
 
+/* --- cheats.c --- */
+void sf_cheats_install(const struct sf_s3e_module *mod);
+
 /* --- packs.c --- */
 void sf_packs_register(void);   /* before the entry point: list the packs in packs.xml */
 
