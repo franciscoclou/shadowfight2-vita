@@ -215,7 +215,8 @@ def controls_help():
         ([dpad_glyph(glyph), stick_glyph(glyph)], None, "MOVE, JUMP, CROUCH"),
         ([pill_glyph("START", 42, pills_w)], None, "PAUSE"),
         ([pill_glyph("SELECT", 42, pills_w)], None, "SHOW/HIDE TOUCH CONTROLS"),
-        ([pill_glyph("L", 42, 64)], None, "BACK"),
+        ([pill_glyph("L", 42, 64)], None, "DASH LEFT"),
+        ([pill_glyph("R", 42, 64)], None, "DASH RIGHT"),
     ]
     keys_w = max(glyph * 2 + 12, pills_w, glyph + 14 + icon) + 22
     labels = [text(r[2], label_px, INK, shadow=False) if r else None for r in rows]

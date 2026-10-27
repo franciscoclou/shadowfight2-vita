@@ -10,7 +10,7 @@
  * The game's fight controls are on-screen only, so physical controls are
  * turned into virtual touches (ids from VPAD_ID) on those controls: the
  * left stick / d-pad drags the joystick, face buttons hold the attack
- * buttons. Positions are read from <data>/controls.txt, which is written
+ * buttons, L and R dash. Positions are read from <data>/controls.txt, which is written
  * with the defaults on first run so they can be tuned without a rebuild.
  */
 #include "s3e/s3e_internal.h"
@@ -27,7 +27,7 @@ typedef struct { int32_t key, pressed; } s3eKeyboardEvent;
 
 static struct { s3eCallback fn; void *ud; } s_ptr_cb[4], s_key_cb[2];
 static sf_input s_prev;
-static uint8_t s_keys[256];
+static uint8_t s_keys[256];   /* no Vita button is a key any more: all zero */
 
 static void fire(s3eCallback fn, void *ud, void *ev)
 {
@@ -43,12 +43,6 @@ static int find_touch(const sf_input *in, int id)
             return i;
     return -1;
 }
-
-/* Vita buttons -> s3eKey codes (s3eKeyboard.h): L is Back 210 (Android
- * back, closes dialogs). The others drive virtual touches instead. */
-static const struct { uint32_t btn; int key; } s_keymap[] = {
-    { SF_BTN_L, 210 },
-};
 
 /* --- virtual touches ------------------------------------------------------ */
 
@@ -70,6 +64,14 @@ static struct { const char *name; uint32_t btn; int x, y; } s_vbtn[V_NBUTTONS] =
     { "pause",  SF_BTN_START,    480,  40 },
 };
 static int s_joy_x = 137, s_joy_y = 405, s_joy_r = 65, s_deadzone = 40;
+
+/* L and R dash left and right. The game dashes on a double tap of the
+ * joystick, so for four phases the stick is taken over: let go, tap, let
+ * go, tap. Afterwards the stick is the player's again, so a stick still
+ * held that way keeps moving. */
+#define DASH_PHASE_US 70000
+static int s_dash_dir;          /* -1 left, 1 right, 0 none */
+static uint64_t s_dash_start;
 static int s_touch_controls;   /* draw the on-screen fight controls */
 static int s_cheats = 1;       /* cheats panel and unlimited energy (patches.c) */
 
@@ -205,6 +207,7 @@ static void add_virtual_touches(sf_input *in)
     /* Only in a fight: elsewhere the same screen points are menu buttons. */
     if (!sf_hud_in_fight()) {
         joy_down = 0;
+        s_dash_dir = 0;
         return;
     }
     if (dx * dx + dy * dy < s_deadzone * s_deadzone)
@@ -213,6 +216,19 @@ static void add_virtual_touches(sf_input *in)
     if (in->buttons & SF_BTN_RIGHT) dx = 127;
     if (in->buttons & SF_BTN_UP)    dy = -127;
     if (in->buttons & SF_BTN_DOWN)  dy = 127;
+    if (!s_dash_dir && (in->buttons & ~s_prev.buttons & (SF_BTN_L | SF_BTN_R))) {
+        s_dash_dir = (in->buttons & ~s_prev.buttons & SF_BTN_L) ? -1 : 1;
+        s_dash_start = sf_plat_time_us();
+    }
+    if (s_dash_dir) {
+        uint64_t phase = (sf_plat_time_us() - s_dash_start) / DASH_PHASE_US;
+        if (phase < 4) {
+            dx = (phase & 1) ? s_dash_dir * 127 : 0;
+            dy = 0;
+        } else {
+            s_dash_dir = 0;
+        }
+    }
     if (dx || dy) {
         if (joy_down)
             add_touch(in, VPAD_ID, s_joy_x + dx * s_joy_r / 127, s_joy_y + dy * s_joy_r / 127);
@@ -271,18 +287,6 @@ void sf_input_poll(void)
         }
     }
 
-    for (i = 0; i < (int)(sizeof(s_keymap) / sizeof(s_keymap[0])); i++) {
-        int now = (in.buttons & s_keymap[i].btn) != 0;
-        int was = (s_prev.buttons & s_keymap[i].btn) != 0;
-        int key = s_keymap[i].key;
-        if (now != was) {
-            s3eKeyboardEvent ev = { key, now };
-            s_keys[key] = now ? 3 : 4;   /* S3E_KEY_STATE_PRESSED|DOWN / RELEASED */
-            fire(s_key_cb[0].fn, s_key_cb[0].ud, &ev);
-        } else {
-            s_keys[key] = now ? 1 : 0;   /* S3E_KEY_STATE_DOWN / UP */
-        }
-    }
     s_prev = in;
 }
 
