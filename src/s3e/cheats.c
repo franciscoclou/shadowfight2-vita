@@ -7,70 +7,45 @@
  * Money +1m, Bonus +1m, Level +1, Currency +1m, Reset Ads Counter, all in
  * the white skin, wired to 0x4a63a3e0.
  *
- * sf_cheats_install points that slot at build_panel(), which makes four
- * buttons with the game's own factory: coins, gems and every currency in
- * the beige skin, and RESET PROGRESS in the dark one. RESET PROGRESS opens
- * the game's SimpleDialog (the clans' "Are you sure..." prompt) and only
- * its YES runs the original Clear: delete the save and quit.
- *
- * Everything here runs on the game's main thread, from inside its own
- * calls. Floats cross as softfp; the rest are plain integers.
+ * sf_cheats_install points that slot at build_panel(), which makes five
+ * buttons with the game's own factory: coins, gems, every currency and a
+ * level in the beige skin, and RESET PROGRESS in the dark one. RESET
+ * PROGRESS opens the game's SimpleDialog (the clans' "Are you sure..."
+ * prompt) and only its YES runs the original Clear: delete the save and
+ * quit. The panel's container also carries the author's watermark, so it
+ * shows and hides with the panel.
  */
-#include "s3e/s3e_internal.h"
+#include "s3e/game.h"
 #include "loader/s3e_loader.h"
 #include "platform/platform.h"
 
 #include <string.h>
 
-static uintptr_t s_delta;   /* load address - link address */
-#define G(link) ((void *)((uintptr_t)(link) + s_delta))
-#define VT(obj, off) (*(void **)(*(uint8_t **)(obj) + (off)))
-
-/* STLport std::string as the game lays it out. */
-typedef struct { char *begin, *end, *cap; } gstring;
-/* A bound member function: the target gets obj + (adj >> 1). */
-typedef struct { void *obj; void *fn; int32_t adj; } delegate;
-
 enum { BTN_DARK = 0, BTN_BEIGE = 5 };
-enum { ID_COINS = 1, ID_GEMS, ID_CURRENCIES, ID_RESET };
+enum { ID_COINS = 1, ID_GEMS, ID_CURRENCIES, ID_LEVEL, ID_RESET };
 
 /* --- game functions (link addresses) ------------------------------------- */
 
 typedef void *(*new_fn)(uint32_t size);                                  /* 0x4a78ac9c */
 typedef void  (*free_fn)(void *p);                                       /* 0x4a78c7cc */
 typedef void *(*vec_alloc_fn)(uint32_t size);                            /* 0x4a004450 */
-typedef void  (*obj_fn)(void *obj);
 /* style, text, id, colour, then 127.5f and 255.0f as raw bits, font, 0 */
 typedef void *(*button_fn)(int style, const char *text, int id, uint32_t colour,
                            uint32_t f1, uint32_t f2, void *font, int flag);  /* 0x4a692ca4 */
-typedef void  (*listen_fn)(void *source, int event, const delegate *d);  /* 0x4a2025c4 */
-typedef void  (*string_fn)(gstring *s, const char *text, void *alloc);   /* 0x4a003a98 */
-typedef void *(*confirm_fn)(gstring *title, gstring *text, gstring *ok, gstring *cancel,
-                            void *on_close, int a6, int a7, int a8, int a9, gstring *a10,
-                            int a11, int a12);                           /* 0x4a50f6a4 */
 typedef void *(*dyncast_fn)(void *p, void *from, void *to, int hint);   /* 0x4a791850 */
 typedef void  (*add_money_fn)(int amount, int flag);                     /* 0x4a27037c */
 typedef void  (*add_gems_fn)(int amount, int a, int b, int c);           /* 0x4a2703c4 */
 typedef void **(*list_fn)(void);                                         /* 0x4a6af74c */
-typedef void *(*get_fn)(void);
 typedef void  (*add_currency_fn)(void *profile, void *currency, int amount); /* 0x4a28a23c */
-
-typedef SOFTFP float (*getf_fn)(void *node);
-typedef SOFTFP void  (*setf_fn)(void *node, float v);
-typedef void  (*setb_fn)(void *node, int v);
-typedef void  (*add_child_fn)(void *node, void *child);
-
-static void free_string(gstring *s)
-{
-    if (s->begin)
-        ((free_fn)G(0x4a78c7cc))(s->begin);
-}
+typedef uint32_t (*level_xp_fn)(void *profile);                          /* 0x4a287f24 */
+typedef int   (*add_xp_fn)(void *profile, uint32_t xp);                  /* 0x4a28fe44 */
+typedef void  (*reorder_fn)(void *node, void *child, int z);
 
 /* --- actions --------------------------------------------------------------- */
 
 /* The original Clear (0x4a63a448): the scene object's slot 7, then
  * 0x4a25e424, which deletes the four save files and quits. */
-static void reset_confirmed(void *self, void *arg)
+static void reset_confirmed(void *self, int *event)
 {
     void *scene = ((get_fn)G(0x4a22c904))();
     LOGI("cheats: progress reset confirmed");
@@ -84,33 +59,17 @@ static void reset_confirmed(void *self, void *arg)
  * localisation keys, and there is no RESET key, so they say YES and NO. */
 static void ask_reset(uint8_t *self)
 {
-    gstring title, text, yes, no, empty;
-    string_fn str = (string_fn)G(0x4a003a98);
-    char alloc;
     void *dlg, *simple;
-    delegate d;
 
-    str(&title, "RESET PROGRESS", &alloc);
-    str(&text, "This erases all your progress and closes the game. Are you sure?", &alloc);
-    str(&yes, "rateDlgBtn1Text", &alloc);     /* YES */
-    str(&no, "dlgStoryNegative", &alloc);     /* NO */
-    str(&empty, "", &alloc);
-    dlg = ((confirm_fn)G(0x4a50f6a4))(&title, &text, &yes, &no, NULL, 1, 0, 0, 0, &empty, 0, 0);
-    free_string(&empty);
-    free_string(&no);
-    free_string(&yes);
-    free_string(&text);
-    free_string(&title);
+    dlg = sf_game_dialog("RESET PROGRESS", "This erases all your progress and closes the game. Are you sure?",
+                         "rateDlgBtn1Text" /* YES */, "dlgStoryNegative" /* NO */);
     /* DialogObject -> SimpleDialog; its first button is at +0x180. */
     simple = dlg ? ((dyncast_fn)G(0x4a791850))(dlg, G(0x4a8cc5ac), G(0x4a8b8888), 0) : NULL;
     if (!simple) {
         LOGE("cheats: confirmation dialog not created");
         return;
     }
-    d.obj = self + 0x114;
-    d.fn = (void *)reset_confirmed;
-    d.adj = -0x228;
-    ((listen_fn)G(0x4a2025c4))(*(uint8_t **)((uint8_t *)simple + 0x180) + 0x114, 2, &d);
+    sf_game_listen(*(void **)((uint8_t *)simple + 0x180), self, reset_confirmed);
 }
 
 /* Button clicks, as 0x4a63a3e0 handles them. */
@@ -123,6 +82,14 @@ static void on_click(void *self, int *id)
     case ID_GEMS:
         ((add_gems_fn)G(0x4a2703c4))(1000000, 0, 7, 0);
         break;
+    case ID_LEVEL: {
+        /* The original Level +1: the XP the next level needs, through the
+         * game's own XP award, which stops at the level cap. */
+        void *profile = ((get_fn)G(0x4a27b924))();
+        ((add_xp_fn)G(0x4a28fe44))(profile, ((level_xp_fn)G(0x4a287f24))(profile));
+        ((obj_fn)G(0x4a6ac6d4))(NULL);
+        break;
+    }
     case ID_CURRENCIES: {
         void **list, **p;
         ((obj_fn)G(0x4a6ae7c0))(NULL);
@@ -148,13 +115,9 @@ static void *make_button(uint8_t *self, int style, const char *text, int id)
     void *btn = ((button_fn)G(0x4a692ca4))(style, text, id, 0xffffff80, 0x42ff0000, 0x437f0000,
                                            *(void **)(self + 0x128), 0);
     void ***list = (void ***)(self + 0x210);   /* begin, end, capacity */
-    delegate d;
 
-    ((obj_fn)G(0x4a032dec))(btn);
-    d.obj = self + 0x114;
-    d.fn = (void *)on_click;
-    d.adj = -0x228;
-    ((listen_fn)G(0x4a2025c4))((uint8_t *)btn + 0x114, 2, &d);
+    sf_game_retain(btn);
+    sf_game_listen(btn, self, on_click);
     ((setb_fn)VT(btn, 0x1d0))(btn, 0);
 
     if (list[1] == list[2]) {
@@ -172,6 +135,42 @@ static void *make_button(uint8_t *self, int style, const char *text, int id)
     return btn;
 }
 
+/* The author's GitHub name, centred on the shop's item scroll (emptied
+ * while the panel is open): a child of the panel's container, so it shows
+ * and hides with the panel, offset left onto the scroll. The scroll is
+ * drawn after the panel's column, so show_panel raises the column. */
+#define WATERMARK_X     (-341.0f)
+#define WATERMARK_Y     0.0f
+#define WATERMARK_SCALE 0.75f
+
+static void add_watermark(void *box)
+{
+    void *mark = sf_game_sprite("textures/sfport/watermark.png");
+
+    if (!mark) {
+        LOGW("cheats: watermark not created");
+        return;
+    }
+    ((setf_fn)VT(mark, NODE_SET_SCALE))(mark, WATERMARK_SCALE);
+    ((setxy_fn)VT(mark, NODE_SET_POS))(mark, WATERMARK_X, WATERMARK_Y);
+    ((add_child_fn)VT(box, NODE_ADD_CHILD))(box, mark);
+}
+
+/* Replaces slot 0x248 (0x4a639fc8), which shows the panel. The panel
+ * hangs in the shop's right-hand column (vtable 0x4a8eb7f0), a child of
+ * the shop screen (0x4a8ec910) like the item scroll; the column is moved
+ * above its siblings so the watermark is drawn over the scroll. */
+static void show_panel(void *self)
+{
+    void *column, *shop;
+
+    ((obj_fn)G(0x4a639fc8))(self);
+    column = ((node_get_fn)VT(self, NODE_GET_PARENT))(self);
+    shop = column ? ((node_get_fn)VT(column, NODE_GET_PARENT))(column) : NULL;
+    if (shop)
+        ((reorder_fn)VT(shop, NODE_REORDER))(shop, column, 1000);
+}
+
 /* Replaces slot 0x290 (0x4a63a090): the buttons hang below the title
  * (+0x140) in a container node (+0x20c), as the original lays them out. */
 static void build_panel(uint8_t *self)
@@ -180,6 +179,7 @@ static void build_panel(uint8_t *self)
         { BTN_BEIGE, ID_COINS,      10.0f, "+1,000,000 COINS" },
         { BTN_BEIGE, ID_GEMS,        5.0f, "+1,000,000 GEMS" },
         { BTN_BEIGE, ID_CURRENCIES,  5.0f, "+1,000,000 CURRENCIES" },
+        { BTN_BEIGE, ID_LEVEL,       5.0f, "+1 LEVEL" },
         { BTN_DARK,  ID_RESET,      24.0f, "RESET PROGRESS" },
     };
     void *title = *(void **)(self + 0x140);
@@ -189,7 +189,7 @@ static void build_panel(uint8_t *self)
 
     ((obj_fn)G(0x4a196870))(box);
     *(void **)(self + 0x20c) = box;
-    ((obj_fn)G(0x4a032dec))(box);
+    sf_game_retain(box);
     ((setb_fn)VT(box, 0x90))(box, 0);
     for (i = 0; i < sizeof(buttons) / sizeof(buttons[0]); i++) {
         void *btn = make_button(self, buttons[i].style, buttons[i].text, buttons[i].id);
@@ -198,6 +198,7 @@ static void build_panel(uint8_t *self)
         y = ((getf_fn)VT(btn, 0x68))(btn);
         ((add_child_fn)VT(box, 0xc8))(box, btn);
     }
+    add_watermark(box);
     ((add_child_fn)VT(self, 0xc8))(self, box);
 }
 
@@ -209,8 +210,6 @@ void sf_cheats_install(const sf_s3e_module *mod)
 {
     uint32_t *slot, *lit, want;
 
-    s_delta = mod->base - mod->hdr.base;
-
     /* The panel's vtable slot 0x290 holds a relocated code address. */
     slot = (uint32_t *)G(0x4a8eb1d8);
     if (*slot != (uint32_t)(uintptr_t)G(0x4a63a090)) {
@@ -218,6 +217,11 @@ void sf_cheats_install(const sf_s3e_module *mod)
         return;
     }
     *slot = (uint32_t)(uintptr_t)build_panel;
+    slot = (uint32_t *)G(0x4a8eaf48 + 0x248);
+    if (*slot == (uint32_t)(uintptr_t)G(0x4a639fc8))
+        *slot = (uint32_t)(uintptr_t)show_panel;
+    else
+        LOGW("cheats: panel show slot holds %#x; left alone", (unsigned)*slot);
 
     /* The panel's title: "Cheats" through a PC-relative literal that
      * 0x4a63a010 adds to its pc (0x4a63a018). */
