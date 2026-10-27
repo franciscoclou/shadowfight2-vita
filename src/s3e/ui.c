@@ -190,7 +190,11 @@ void sf_ui_poll(void)
         at = e ? atoi(e) : 0;
     }
     if (at > 0 && s_frames >= (unsigned)at) {
+        const char *f = getenv("SF_FILE_TEST");
         at = 0;
-        sf_ui_show_controls();
+        if (f && *f)
+            sf_file_selftest(f);
+        else
+            sf_ui_show_controls();
     }
 }

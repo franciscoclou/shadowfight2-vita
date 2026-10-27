@@ -16,6 +16,7 @@
 #include "platform/platform.h"
 
 #include <dirent.h>
+#include <pthread.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,6 +48,37 @@ typedef struct sf_userfs {
 static sf_userfs s_userfs[MAX_USERFS];
 static int s_nuserfs;
 
+/* Derbh keeps one decoder state per archive (the file being decoded and
+ * its buffer), and the game reads pack files from more than one thread:
+ * a fight loads its PNGs on a loader thread while the main thread reads
+ * the atlas .plists from the same pack. Unserialized, one thread's read
+ * clobbered the other's, and getFileData's single whole-file read came
+ * back short: the zone 2+ arenas got empty atlases and drew every piece
+ * with the whole texture. Every user filesystem call holds this lock
+ * (recursive: a size query is several calls). */
+static pthread_mutex_t s_ufs_lock;
+static pthread_once_t s_ufs_once = PTHREAD_ONCE_INIT;
+
+static void ufs_lock_init(void)
+{
+    pthread_mutexattr_t a;
+    pthread_mutexattr_init(&a);
+    pthread_mutexattr_settype(&a, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&s_ufs_lock, &a);
+    pthread_mutexattr_destroy(&a);
+}
+
+static void ufs_lock(void)
+{
+    pthread_once(&s_ufs_once, ufs_lock_init);
+    pthread_mutex_lock(&s_ufs_lock);
+}
+
+static void ufs_unlock(void)
+{
+    pthread_mutex_unlock(&s_ufs_lock);
+}
+
 /* Read-only disk files (kind 4) get our own buffer instead of stdio's.
  * Derbh seeks before nearly every read of its archives and the XML parser
  * reads a byte at a time: through stdio each seek threw the buffer away
@@ -67,6 +99,7 @@ typedef struct sf_file {
     uint32_t mem_size, mem_pos;
     int eof;
     int writing;
+    char *name;               /* user fs files: for the short-read log */
 } sf_file;
 
 /* --- paths ------------------------------------------------------------- */
@@ -174,12 +207,16 @@ static sf_file *sf_s3eFileOpen_(const char *name, const char *mode)
     /* User filesystems first, read-only opens only (Derbh is read-only). */
     if (!is_writable_mode(mode)) {
         for (i = s_nuserfs - 1; i >= 0; i--) {
-            void *h = s_userfs[i].open(name, mode);
+            void *h;
+            ufs_lock();
+            h = s_userfs[i].open(name, mode);
+            ufs_unlock();
             if (h) {
                 f = calloc(1, sizeof(*f));
                 f->kind = 2;
                 f->ufs = &s_userfs[i];
                 f->uh = h;
+                f->name = strdup(name);
                 LOGV("s3eFileOpen(%s) -> userfs %d", name, i);
                 return f;
             }
@@ -248,8 +285,12 @@ static int32_t sf_s3eFileClose(sf_file *f)
     } else if (f->kind == 1 || f->kind == 4) {
         fclose(f->fp);
         free(f->rb);
-    } else if (f->kind == 2)
+    } else if (f->kind == 2) {
+        ufs_lock();
         f->ufs->close(f->uh);
+        ufs_unlock();
+        free(f->name);
+    }
     free(f);
     return S3E_RESULT_SUCCESS;
 }
@@ -318,7 +359,16 @@ static uint32_t sf_s3eFileRead(void *buf, uint32_t size, uint32_t count, sf_file
         return n;
     }
     case 2:
-        return f->ufs->read(buf, size, count, f->uh);
+        ufs_lock();
+        n = f->ufs->read(buf, size, count, f->uh);
+        ufs_unlock();
+        if (n < count && size * count > 1) {
+            static int logged;
+            if (logged++ < 40)
+                LOGW("short read from pack: %s, %u x %u -> %u (main thread %d)", f->name ? f->name : "?",
+                     (unsigned)size, (unsigned)count, (unsigned)n, sf_thread_is_main());
+        }
+        return n;
     default: {
         uint32_t avail = (f->mem_size - f->mem_pos) / size;
         n = count < avail ? count : avail;
@@ -358,8 +408,13 @@ static int32_t sf_s3eFileSeek(sf_file *f, int32_t off, int32_t origin)
         f->pos = pos;
         return S3E_RESULT_SUCCESS;
     }
-    case 2:
-        return f->ufs->seek(f->uh, off, origin);
+    case 2: {
+        int32_t r;
+        ufs_lock();
+        r = f->ufs->seek(f->uh, off, origin);
+        ufs_unlock();
+        return r;
+    }
     default: {
         int64_t pos = whence == SEEK_SET ? off : whence == SEEK_CUR ? (int64_t)f->mem_pos + off
                                                                     : (int64_t)f->mem_size + off;
@@ -378,7 +433,13 @@ static int32_t sf_s3eFileTell(sf_file *f)
     switch (f->kind) {
     case 1: return (int32_t)ftell(f->fp);
     case 4: return (int32_t)f->pos;
-    case 2: return f->ufs->tell(f->uh);
+    case 2: {
+        int32_t r;
+        ufs_lock();
+        r = f->ufs->tell(f->uh);
+        ufs_unlock();
+        return r;
+    }
     default: return (int32_t)f->mem_pos;
     }
 }
@@ -392,10 +453,12 @@ static int32_t sf_s3eFileGetSize(sf_file *f)
         return (int32_t)f->mem_size;
     if (f->kind == 4)
         return (int32_t)f->size;
+    ufs_lock();   /* one atomic query, for the user filesystems' sake */
     cur = sf_s3eFileTell(f);
     sf_s3eFileSeek(f, 0, 2);
     size = sf_s3eFileTell(f);
     sf_s3eFileSeek(f, cur, 0);
+    ufs_unlock();
     return size;
 }
 
@@ -403,8 +466,13 @@ static int32_t sf_s3eFileEOF(sf_file *f)
 {
     if (!f)
         return 1;
-    if (f->kind == 2)
-        return f->ufs->eof(f->uh);
+    if (f->kind == 2) {
+        int32_t r;
+        ufs_lock();
+        r = f->ufs->eof(f->uh);
+        ufs_unlock();
+        return r;
+    }
     if (f->kind == 1)
         return f->eof || feof(f->fp);
     if (f->kind == 4)
@@ -479,7 +547,9 @@ static int64_t sf_s3eFileGetFileInt(const char *name, int32_t prop)
     if (prop == 0 || prop == 1 || prop == 2 || prop == 4) {
         int i;
         for (i = s_nuserfs - 1; i >= 0; i--) {
-            void *h = s_userfs[i].open(name, "rb");
+            void *h;
+            ufs_lock();
+            h = s_userfs[i].open(name, "rb");
             if (h) {
                 int64_t r = 0;
                 if (prop == 1)
@@ -489,8 +559,10 @@ static int64_t sf_s3eFileGetFileInt(const char *name, int32_t prop)
                     r = s_userfs[i].tell(h);
                 }
                 s_userfs[i].close(h);
+                ufs_unlock();
                 return r;
             }
+            ufs_unlock();
         }
     }
     resolve(name, path, sizeof(path), 0);
@@ -627,6 +699,34 @@ void *sf_file_load(const char *name, uint32_t *size)
     if (buf && size)
         *size = (uint32_t)n;
     return buf;
+}
+
+/* Harness self-test (SF_FILE_TEST=<path>, see ui.c): the sequence
+ * cocos2d's getFileData uses (0x4a05e650): open, size, one whole read. */
+void sf_file_selftest(const char *name)
+{
+    sf_file *f = sf_s3eFileOpen(name, "rb");
+    int32_t size, got;
+    uint8_t *buf;
+    if (!f) {
+        LOGI("selftest %s: open failed", name);
+        return;
+    }
+    size = sf_s3eFileGetSize(f);
+    buf = calloc(1, size > 0 ? (size_t)size + 1 : 1);
+    got = buf && size > 0 ? (int32_t)sf_s3eFileRead(buf, (uint32_t)size, 1, f) : -1;
+    LOGI("selftest %s: kind %d, size %d, read(size, 1) = %d, tell %d, eof %d", name, f->kind, (int)size,
+         (int)got, (int)sf_s3eFileTell(f), (int)sf_s3eFileEOF(f));
+    if (buf && size > 0) {
+        uint32_t n = 0;
+        sf_s3eFileSeek(f, 0, 0);
+        memset(buf, 0, (size_t)size);
+        n = sf_s3eFileRead(buf, 1, (uint32_t)size, f);
+        LOGI("selftest %s: read(1, size) = %u bytes, tail \"%s\"", name, (unsigned)n,
+             n > 20 ? (char *)buf + n - 20 : (char *)buf);
+    }
+    free(buf);
+    sf_s3eFileClose(f);
 }
 
 const sf_export sf_exports_file[] = {
