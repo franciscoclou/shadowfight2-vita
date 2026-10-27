@@ -471,6 +471,28 @@ static int64_t sf_s3eFileGetFileInt(const char *name, int32_t prop)
         return -1;
     if (sf_ui_asset(name, &size))
         return prop == 1 ? 1 : prop == 4 ? (int64_t)size : prop == 5 ? 0 : prop <= 3 ? 0 : -1;
+    /* A file inside a content pack exists only in the user filesystems
+     * (Derbh), which answer first, as they do for opens. Without this
+     * the game sized every pack file at nothing: the zone 2+ arenas read
+     * their .plist atlases as empty, found none of their frames and drew
+     * each piece with its whole atlas. */
+    if (prop == 0 || prop == 1 || prop == 2 || prop == 4) {
+        int i;
+        for (i = s_nuserfs - 1; i >= 0; i--) {
+            void *h = s_userfs[i].open(name, "rb");
+            if (h) {
+                int64_t r = 0;
+                if (prop == 1)
+                    r = 1;
+                else if (prop == 4) {
+                    s_userfs[i].seek(h, 0, 2);
+                    r = s_userfs[i].tell(h);
+                }
+                s_userfs[i].close(h);
+                return r;
+            }
+        }
+    }
     resolve(name, path, sizeof(path), 0);
     if (stat(path, &st) != 0) {
         if (prop == 0 || prop == 1 || prop == 2)

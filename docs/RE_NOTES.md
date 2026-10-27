@@ -220,6 +220,14 @@ manager+0xb90, manager 0x4a266ed4, lookup 0x4a25e490).
   names ('\'-separated), then per file a u16 dir index (0 = root) and chunk
   ids up to 0xffff. Every pack carries its own settings.xml.
 
+- **s3eFileGetFileInt must see the packs.** The game sizes a file with
+  s3eFileGetFileInt(path, 4) before reading it whole (cocos2d's plist
+  loader does). Files inside the .dz packs exist only in Derbh, so a
+  disk-only answer made every pack .plist read as empty: the zone 2+
+  arenas found none of their atlas frames, and each piece fell back to a
+  1-pixel-inset whole-texture rectangle (u,v 1/128..127/128), drawing the
+  whole atlas in every piece. Images were unaffected (read to EOF).
+
 ## Crash notification
 
 Quest CrashNotification (quests.xml) fires at SessionStart when
