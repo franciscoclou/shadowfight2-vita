@@ -219,3 +219,10 @@ manager+0xb90, manager 0x4a266ed4, lookup 0x4a25e490).
 - Derbh header: "DTRZ", u16 files, u16 dirs, u8 version, file names, dir
   names ('\'-separated), then per file a u16 dir index (0 = root) and chunk
   ids up to 0xffff. Every pack carries its own settings.xml.
+
+## Crash notification
+
+Quest CrashNotification (quests.xml) fires at SessionStart when
+?SysInfo().LastSessionCrashed and DeviceTotalMem <= 512 (MB); its OK
+button sets LOW graphics. Closing the app from the LiveArea counts as a
+crash, so s3eDeviceGetInt reports 640 MB (RAM + CDRAM).

@@ -150,7 +150,13 @@ static int32_t sf_s3eDeviceUnRegister(uint32_t id, s3eCallback fn)
 }
 
 /* s3eDeviceProperty, exact (s3eDevice.h). We present as an Android
- * device: the game's data and code paths are the Android ones. */
+ * device: the game's data and code paths are the Android ones.
+ *
+ * Total RAM is the Vita's 512 MB plus its 128 MB of CDRAM. At exactly
+ * 512 the quest CrashNotification (quests.xml) fires on every boot after
+ * the app was closed from the LiveArea, which the game cannot tell from a
+ * crash: "game crash during your last session due to low memory", whose
+ * OK button drops the graphics to LOW. It requires DeviceTotalMem <= 512. */
 static int32_t sf_s3eDeviceGetInt(uint32_t prop)
 {
     switch (prop) {
@@ -158,14 +164,14 @@ static int32_t sf_s3eDeviceGetInt(uint32_t prop)
     case 1:  return 16000;       /* S3E_DEVICE_CLASS = ANDROID_GENERIC */
     case 4:  return 1;           /* S3E_DEVICE_LANGUAGE = ENGLISH */
     case 6:  return 128 * 1024;  /* S3E_DEVICE_FREE_RAM (KB) */
-    case 7:  return 512 * 1024;  /* S3E_DEVICE_TOTAL_RAM (KB) */
+    case 7:  return 640 * 1024;  /* S3E_DEVICE_TOTAL_RAM (KB) */
     case 8:  return 12;          /* S3E_DEVICE_ARCHITECTURE = ARM7 */
     case 9:  return 0x00070400;  /* S3E_DEVICE_S3E_VERSION */
     case 10: return 100;         /* S3E_DEVICE_BATTERY_LEVEL */
     case 12: return 1;           /* S3E_DEVICE_MAINS_POWER */
     case 16: return 3;           /* S3E_DEVICE_FPU = NEON */
     case 28: return 3;           /* S3E_DEVICE_NUM_CPU_CORES */
-    case 29: return 512 * 1024;  /* S3E_DEVICE_MEM_TOTAL (KB) */
+    case 29: return 640 * 1024;  /* S3E_DEVICE_MEM_TOTAL (KB) */
     case 30: return 128 * 1024;  /* S3E_DEVICE_MEM_FREE (KB) */
     case 34: return 0;           /* S3E_DEVICE_SUPPORTS_SUSPEND_RESUME */
     default:
