@@ -49,3 +49,6 @@ tests/harness/hud_ref/
 tests/harness/*.core
 tests/harness/test_file
 tests/harness/test_memory
+
+# --- saves pulled off the Vita (scripts/pull_save.sh) ---
+saves/

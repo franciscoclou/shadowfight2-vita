@@ -6,6 +6,7 @@
 #   ./scripts/harness.sh                 build and run (300 frames)
 #   SF_MAX_FRAMES=900 ./scripts/harness.sh
 #   SF_TAPS="400:480:400" ./scripts/harness.sh   tap (480,400) at frame 400
+#   SF_SAVE=saves/vita ./scripts/harness.sh      boot a save from pull_save.sh
 #
 # Uses game_out/ from ./scripts/prepare_game.sh. The run log is
 # tests/harness/out/run.log.
@@ -19,9 +20,18 @@ fi
 OUT="$REPO_ROOT/tests/harness/out"
 rm -rf "$OUT"; mkdir -p "$OUT"
 
-docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp \
+# A pulled save runs on a scratch copy mounted over game_out/ram, with the
+# device ID its hashes were made with.
+SAVE_ARGS=()
+if [ -n "${SF_SAVE:-}" ]; then
+  SAVE="$(cd "$SF_SAVE" && pwd)"
+  rm -rf "$OUT/ram"; cp -r "$SAVE/ram" "$OUT/ram"
+  SAVE_ARGS=(-v "$OUT/ram:/src/game_out/ram" -e SF_DEVICE_ID="$(cat "$SAVE/device_id")")
+fi
+
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp "${SAVE_ARGS[@]}" \
   -e SF_MAX_FRAMES="${SF_MAX_FRAMES:-300}" -e SF_SHOT_EVERY="${SF_SHOT_EVERY:-30}" \
-  -e SF_TAPS="${SF_TAPS:-}" -e SF_LOAD_ADDR="${SF_LOAD_ADDR:-0x98000000}" -e SF_PROFILE="${SF_PROFILE:-0}" -e SF_OUT=/src/tests/harness/out \
+  -e SF_TAPS="${SF_TAPS:-}" -e SF_UI_TEST="${SF_UI_TEST:-0}" -e SF_LOAD_ADDR="${SF_LOAD_ADDR:-0x98000000}" -e SF_PROFILE="${SF_PROFILE:-0}" -e SF_OUT=/src/tests/harness/out \
   -e EGL_PLATFORM=surfaceless -e LIBGL_ALWAYS_SOFTWARE=1 -e GALLIUM_DRIVER="${GALLIUM_DRIVER:-softpipe}" \
   -v "$REPO_ROOT:/src" -w /src/tests/harness "$IMAGE" bash -c '
     set -e

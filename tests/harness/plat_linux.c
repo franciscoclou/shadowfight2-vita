@@ -83,9 +83,12 @@ void sf_plat_audio_start(int rate, sf_audio_fill fill)
 
 void sf_plat_worker_thread(void) {}
 
+/* SF_DEVICE_ID: a save pulled off a Vita (scripts/pull_save.sh) is hashed
+ * with that Vita's ID, so the harness must report the same one. */
 const char *sf_plat_device_id(void)
 {
-    return "5f0d5f0d5f0d5f0d5f0d5f0d5f0d5f0d";
+    const char *id = getenv("SF_DEVICE_ID");
+    return id && *id ? id : "5f0d5f0d5f0d5f0d5f0d5f0d5f0d5f0d";
 }
 
 /* The main thread runs as fast as qemu allows; other threads really sleep,
