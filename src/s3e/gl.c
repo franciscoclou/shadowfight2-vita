@@ -84,6 +84,43 @@ TIMED(glCompressedTexImage2D, SF_PROF_TEXTURE,
       (GLenum t, GLint l, GLenum fi, GLsizei w, GLsizei h, GLint b, GLsizei sz, const void *d),
       (t, l, fi, w, h, b, sz, d), (GLenum, GLint, GLenum, GLsizei, GLsizei, GLint, GLsizei, const void *))
 
+/* --- GL error tracing ----------------------------------------------------
+ * Every integer-only GL import the game calls straight into the platform
+ * goes through a thunk (gl_trace.S) that checks glGetError after the call
+ * and logs the function and its first four arguments, the first 3 times
+ * each function fails. vitaGL quietly ignores what it does not support;
+ * this names it. */
+#define TRACE_MAX 256
+void *sf_gltrace_real[TRACE_MAX];
+uint32_t sf_gltrace_args[4];
+extern const uint8_t sf_gltrace_thunks[];
+static const char *s_trace_name[TRACE_MAX];
+static uint8_t s_trace_logged[TRACE_MAX];
+static int s_ntrace;
+
+void *sf_gl_trace(const char *name, void *fn)
+{
+    if (!strcmp(name, "glGetError") || s_ntrace >= TRACE_MAX)
+        return fn;
+    s_trace_name[s_ntrace] = name;
+    sf_gltrace_real[s_ntrace] = fn;
+    return (void *)(sf_gltrace_thunks + 8 * s_ntrace++);
+}
+
+void sf_gltrace_check(int i)
+{
+    static GLenum (*get_error)(void);
+    GLenum e;
+    if (!get_error)
+        get_error = (GLenum (*)(void))gl_proc("glGetError");
+    if (!get_error || (e = get_error()) == 0 || s_trace_logged[i] >= 3)
+        return;
+    s_trace_logged[i]++;
+    LOGW("GL error %#x from %s(%#x, %#x, %#x, %#x)", (unsigned)e, s_trace_name[i],
+         (unsigned)sf_gltrace_args[0], (unsigned)sf_gltrace_args[1], (unsigned)sf_gltrace_args[2],
+         (unsigned)sf_gltrace_args[3]);
+}
+
 /* A failed upload leaves the texture with whatever its id held before, so
  * every upload error is logged (the first 50), with the free memory. */
 static void check_upload(const char *what, GLsizei w, GLsizei h, GLenum f, GLenum ty)

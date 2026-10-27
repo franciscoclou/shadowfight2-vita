@@ -81,7 +81,7 @@ void *sf_import_resolve(const char *name)
     if (name[0] == 'g' && name[1] == 'l') {
         fn = sf_plat_gl_proc(name);
         if (fn)
-            return fn;
+            return sf_gl_trace(name, fn);
     }
     return NULL;
 }
