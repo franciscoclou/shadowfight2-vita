@@ -310,6 +310,13 @@ glGetError after the call and logs the first failures by name).
   untouched. The zone 2+ arenas save and restore the scissor box with it,
   so they were clipped to garbage: scattered tiles over stale frames. gl.c
   tracks glScissor and answers GL_SCISSOR_BOX itself.
+- glBufferSubData into a buffer that earlier draws of the same frame
+  still use: vitaGL runs the frame's draws later from the buffer's one
+  copy, so they all read the last data written. The zone 2+ arenas
+  stream their sprites through one vertex buffer this way and drew the
+  right images in the wrong places (Mesa copies, the harness looked
+  fine). gl.c keeps a RAM copy of each buffer and turns every partial
+  update into a whole glBufferData, which vitaGL gives new memory.
 - Harmless at boot: glEnable(GL_LIGHTING), glDisable(0x809e/0x80a0
   multisample), glPixelStorei(GL_PACK/UNPACK_ALIGNMENT),
   glHint(GL_GENERATE_MIPMAP_HINT).

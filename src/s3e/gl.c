@@ -10,6 +10,8 @@
 
 #include "platform/platform.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* --- softfp wrappers for every imported GL function with float args ----
@@ -136,6 +138,116 @@ static void t_glGetIntegerv(GLenum pname, GLint *out)
         fn(pname, out);
 }
 
+/* --- buffer objects -------------------------------------------------------
+ * The zone 2+ arenas stream their sprites through one vertex buffer:
+ * glBufferSubData, draw, glBufferSubData over the same bytes, draw...
+ * vitaGL records draws and runs them at the end of the frame from the
+ * buffer's single copy, so every quad took the last vertices written:
+ * the right images in the wrong places. Here each buffer keeps a RAM
+ * copy, and a partial update re-uploads it whole with glBufferData,
+ * which gives vitaGL new memory and retires the old after the GPU is
+ * done with it. */
+#define GL_ARRAY_BUFFER         0x8892
+#define GL_ELEMENT_ARRAY_BUFFER 0x8893
+#define MAX_BUFFERS 128
+
+typedef struct { GLuint id; GLenum usage; uint32_t size, used; uint8_t *data; } sf_buffer;
+static sf_buffer s_buffers[MAX_BUFFERS];
+static GLuint s_bound_array, s_bound_element;
+
+static sf_buffer *buffer_for(GLenum target, int create)
+{
+    GLuint id = target == GL_ARRAY_BUFFER ? s_bound_array
+              : target == GL_ELEMENT_ARRAY_BUFFER ? s_bound_element : 0;
+    sf_buffer *free_slot = NULL;
+    int i;
+    if (!id)
+        return NULL;
+    for (i = 0; i < MAX_BUFFERS; i++) {
+        if (s_buffers[i].id == id)
+            return &s_buffers[i];
+        if (!s_buffers[i].id && !free_slot)
+            free_slot = &s_buffers[i];
+    }
+    if (create && free_slot) {
+        memset(free_slot, 0, sizeof(*free_slot));
+        free_slot->id = id;
+        return free_slot;
+    }
+    return NULL;
+}
+
+static void t_glBindBuffer(GLenum target, GLuint id)
+{
+    static void (*fn)(GLenum, GLuint);
+    if (!fn)
+        fn = (void (*)(GLenum, GLuint))gl_proc("glBindBuffer");
+    if (target == GL_ARRAY_BUFFER)
+        s_bound_array = id;
+    else if (target == GL_ELEMENT_ARRAY_BUFFER)
+        s_bound_element = id;
+    if (fn)
+        fn(target, id);
+}
+
+static void t_glBufferData(GLenum target, GLint size, const void *data, GLenum usage)
+{
+    static void (*fn)(GLenum, GLint, const void *, GLenum);
+    sf_buffer *b = buffer_for(target, 1);
+    if (!fn)
+        fn = (void (*)(GLenum, GLint, const void *, GLenum))gl_proc("glBufferData");
+    if (b) {
+        uint8_t *p = size > 0 ? realloc(b->data, (size_t)size) : NULL;
+        if (p || size <= 0) {
+            b->data = p;
+            b->size = size > 0 ? (uint32_t)size : 0;
+            b->usage = usage;
+            b->used = data ? b->size : 0;
+            if (p && data)
+                memcpy(p, data, (size_t)size);
+        }
+    }
+    if (fn)
+        fn(target, size, data, usage);
+}
+
+static void t_glBufferSubData(GLenum target, GLint off, GLint size, const void *data)
+{
+    static void (*sub)(GLenum, GLint, GLint, const void *);
+    static void (*whole)(GLenum, GLint, const void *, GLenum);
+    sf_buffer *b = buffer_for(target, 0);
+    if (!sub) {
+        sub = (void (*)(GLenum, GLint, GLint, const void *))gl_proc("glBufferSubData");
+        whole = (void (*)(GLenum, GLint, const void *, GLenum))gl_proc("glBufferData");
+    }
+    if (b && b->data && whole && data && off >= 0 && size >= 0 &&
+        (uint32_t)off + (uint32_t)size <= b->size) {
+        memcpy(b->data + off, data, (size_t)size);
+        if ((uint32_t)(off + size) > b->used)
+            b->used = (uint32_t)(off + size);
+        whole(target, (GLint)b->used, b->data, b->usage);
+        return;
+    }
+    if (sub)
+        sub(target, off, size, data);
+}
+
+static void t_glDeleteBuffers(GLint n, const GLuint *ids)
+{
+    static void (*fn)(GLint, const GLuint *);
+    int i, j;
+    if (!fn)
+        fn = (void (*)(GLint, const GLuint *))gl_proc("glDeleteBuffers");
+    for (i = 0; i < n; i++)
+        for (j = 0; j < MAX_BUFFERS; j++)
+            if (s_buffers[j].id && s_buffers[j].id == ids[i]) {
+                free(s_buffers[j].data);
+                memset(&s_buffers[j], 0, sizeof(s_buffers[j]));
+            }
+    if (fn)
+        fn(n, ids);
+}
+
 /* --- GL error tracing ----------------------------------------------------
  * Every integer-only GL import the game calls straight into the platform
  * goes through a thunk (gl_trace.S) that checks glGetError after the call
@@ -147,14 +259,14 @@ void *sf_gltrace_real[TRACE_MAX];
 uint32_t sf_gltrace_args[4];
 extern const uint8_t sf_gltrace_thunks[];
 static const char *s_trace_name[TRACE_MAX];
-static uint8_t s_trace_logged[TRACE_MAX];
+static uint8_t s_trace_logged[TRACE_MAX], s_trace_seen[TRACE_MAX];
 static int s_ntrace;
 
 void *sf_gl_trace(const char *name, void *fn)
 {
     if (!strcmp(name, "glGetError") || s_ntrace >= TRACE_MAX)
         return fn;
-    s_trace_name[s_ntrace] = name;
+    s_trace_name[s_ntrace] = strdup(name);   /* the loader's copy is reused */
     sf_gltrace_real[s_ntrace] = fn;
     return (void *)(sf_gltrace_thunks + 8 * s_ntrace++);
 }
@@ -163,6 +275,11 @@ void sf_gltrace_check(int i)
 {
     static GLenum (*get_error)(void);
     GLenum e;
+    if (!s_trace_seen[i]) {
+        s_trace_seen[i] = 1;
+        LOGI("GL first %s(%#x, %#x, %#x, %#x)", s_trace_name[i], (unsigned)sf_gltrace_args[0],
+             (unsigned)sf_gltrace_args[1], (unsigned)sf_gltrace_args[2], (unsigned)sf_gltrace_args[3]);
+    }
     if (!get_error)
         get_error = (GLenum (*)(void))gl_proc("glGetError");
     if (!get_error || (e = get_error()) == 0 || s_trace_logged[i] >= 3)
@@ -473,6 +590,10 @@ const sf_export sf_exports_gl[] = {
     { "glTexSubImage2D", (void *)t_glTexSubImage2D },
     { "glCompressedTexImage2D", (void *)t_glCompressedTexImage2D },
     { "glScissor", (void *)t_glScissor },
+    { "glBindBuffer", (void *)t_glBindBuffer },
+    { "glBufferData", (void *)t_glBufferData },
+    { "glBufferSubData", (void *)t_glBufferSubData },
+    { "glDeleteBuffers", (void *)t_glDeleteBuffers },
     { "glGetFloatv", (void *)t_glGetFloatv },
     { "glGetIntegerv", (void *)t_glGetIntegerv },
 
