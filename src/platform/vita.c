@@ -171,6 +171,12 @@ void sf_plat_swap(void)
     vglSwapBuffers(GL_FALSE);
 }
 
+void sf_plat_gl_mem_free(uint32_t *vram_kb, uint32_t *ram_kb)
+{
+    *vram_kb = (uint32_t)(vglMemFree(VGL_MEM_VRAM) >> 10);
+    *ram_kb = (uint32_t)(vglMemFree(VGL_MEM_RAM) >> 10);
+}
+
 void *sf_plat_gl_proc(const char *name)
 {
     return vglGetProcAddress(name);

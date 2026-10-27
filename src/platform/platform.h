@@ -38,6 +38,8 @@ const char *sf_plat_device_id(void);
 void  sf_plat_gl_init(int width, int height);
 void  sf_plat_swap(void);
 void *sf_plat_gl_proc(const char *name);
+/* Free GPU-usable memory in KB (VRAM, RAM), for diagnostics; 0 if unknown. */
+void sf_plat_gl_mem_free(uint32_t *vram_kb, uint32_t *ram_kb);
 
 /* Audio: start a thread that keeps calling fill() for blocks of
  * interleaved stereo 16-bit frames at the given rate, in real time. */

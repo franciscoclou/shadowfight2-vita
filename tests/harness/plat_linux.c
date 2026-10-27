@@ -179,6 +179,11 @@ void sf_plat_swap(void)
     }
 }
 
+void sf_plat_gl_mem_free(uint32_t *vram_kb, uint32_t *ram_kb)
+{
+    *vram_kb = *ram_kb = 0;
+}
+
 void *sf_plat_gl_proc(const char *name)
 {
     return (void *)eglGetProcAddress(name);

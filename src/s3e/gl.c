@@ -84,6 +84,26 @@ TIMED(glCompressedTexImage2D, SF_PROF_TEXTURE,
       (GLenum t, GLint l, GLenum fi, GLsizei w, GLsizei h, GLint b, GLsizei sz, const void *d),
       (t, l, fi, w, h, b, sz, d), (GLenum, GLint, GLenum, GLsizei, GLsizei, GLint, GLsizei, const void *))
 
+/* A failed upload leaves the texture with whatever its id held before, so
+ * every upload error is logged (the first 50), with the free memory. */
+static void check_upload(const char *what, GLsizei w, GLsizei h, GLenum f, GLenum ty)
+{
+    static GLenum (*get_error)(void);
+    static int logged;
+    GLenum e;
+    if (!get_error)
+        get_error = (GLenum (*)(void))gl_proc("glGetError");
+    if (!get_error || (e = get_error()) == 0 || logged >= 50)
+        return;
+    {
+        uint32_t vram, ram;
+        sf_plat_gl_mem_free(&vram, &ram);
+        logged++;
+        LOGW("%s %dx%d fmt %#x type %#x failed: GL error %#x (free: vram %u KB, ram %u KB)",
+             what, (int)w, (int)h, (unsigned)f, (unsigned)ty, (unsigned)e, (unsigned)vram, (unsigned)ram);
+    }
+}
+
 /* glTexImage2D also lets hud.c swap in the fight-control atlases with the
  * controls erased (see hud.c), and glDeleteTextures tells it when a texture
  * it tracks goes away. */
@@ -105,6 +125,7 @@ static void t_glTexImage2D(GLenum t, GLint l, GLint fi, GLsizei w, GLsizei h, GL
     alt = sf_hud_tex_image(l, w, h, f, ty, d);
     fn(t, l, fi, w, h, b, f, ty, alt ? alt : d);
     sf_prof_add(SF_PROF_TEXTURE, sf_plat_time_us() - t0, 0);
+    check_upload("glTexImage2D", w, h, f, ty);
 }
 
 static void t_glBindTexture(GLenum target, GLuint tex)

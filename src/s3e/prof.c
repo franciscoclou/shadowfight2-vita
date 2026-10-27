@@ -11,6 +11,7 @@
 #include "platform/platform.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #define REPORT_US     (10 * 1000000ull)
 #define SLOW_FRAME_MS 100
@@ -94,6 +95,16 @@ void sf_prof_frame(void)
             snprintf(line + n, sizeof(line) - (size_t)n, " | read %u KB",
                      (unsigned)((get(&s_bytes) - base_bytes) / 1024));
             base_bytes = get(&s_bytes);
+        }
+        /* GPU memory left: a texture upload that does not fit fails
+         * silently and shows stale memory (gl.c logs each failure). */
+        {
+            uint32_t vram, ram;
+            sf_plat_gl_mem_free(&vram, &ram);
+            n = (int)strlen(line);
+            if (n < (int)sizeof(line) && (vram || ram))
+                snprintf(line + n, sizeof(line) - (size_t)n, " | gpu free vram %u MB ram %u MB",
+                         (unsigned)(vram >> 10), (unsigned)(ram >> 10));
         }
         /* Steady gameplay with nothing loading is not worth a line unless
          * frames were slow. */
