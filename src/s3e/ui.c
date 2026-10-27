@@ -10,7 +10,8 @@
  *
  * Pause: PauseFightDialog (vtable 0x4a8c4330) builds home, music, sound
  * and play in slot 0x26c (0x4a390c60) as image buttons; ours adds a
- * CONTROLS icon made the same way (0x4a161010) from embedded images.
+ * CONTROLS icon made the same way (0x4a161010) from embedded images,
+ * which opens the help over the pause dialog.
  *
  * The help is the game's SimpleDialog with controls_help.png on its
  * message label; blank lines in the message give the dialog its height.
@@ -76,6 +77,11 @@ void sf_ui_show_controls(void)
         LOGE("ui: controls dialog not created");
         return;
     }
+    /* A dialog with +0x130 set raises the fight's pause flag (0x4a8f404c)
+     * when shown and clears it when closed (0x4a51d524, 0x4a51b180), so
+     * closing this one over the pause dialog would resume the fight under
+     * it. The flag is already up there; this dialog leaves it alone. */
+    *((uint8_t *)dlg + 0x130) = 0;
     label = *(void **)((uint8_t *)dlg + 0x1bc);   /* SimpleDialog's message */
     pic = sf_game_sprite(ASSET_DIR "controls_help.png");
     if (!label || !pic) {
@@ -121,38 +127,9 @@ typedef void (*set_press_scale_fn)(void *btn, uint32_t scale);                  
 
 #define PAUSE_X   0.0f
 #define PAUSE_Y   (-260.0f)
-/* The picture replaces the button row, between the title and our icon. */
-#define PAUSE_PIC_Y     (-55.0f)
-#define PAUSE_PIC_SCALE 0.37f
-
-/* The pause dialog's own buttons: home, play, music, sound. */
-static const uint16_t s_pause_buttons[] = { 0x1cc, 0x1d0, 0x1d4, 0x1d8 };
-static void *s_pause_pic;   /* the open pause dialog's picture, or NULL */
-
-/* Our icon toggles the picture in place of the buttons. A second dialog
- * on top would do, but closing it resumes the fight under the pause
- * dialog; this way only play resumes it. */
 static void pause_click(void *dlg, int *event)
 {
-    void *body = *(void **)((uint8_t *)dlg + 0x174);
-    int show_pic;
-    size_t i;
-
-    if (!s_pause_pic) {
-        if (!(s_pause_pic = sf_game_sprite(ASSET_DIR "controls_help.png")))
-            return;
-        ((setf_fn)VT(s_pause_pic, NODE_SET_SCALE))(s_pause_pic, PAUSE_PIC_SCALE);
-        ((setxy_fn)VT(s_pause_pic, NODE_SET_POS))(s_pause_pic, 0.0f, PAUSE_PIC_Y);
-        ((setb_fn)VT(s_pause_pic, NODE_SET_VISIBLE))(s_pause_pic, 0);
-        ((add_child_fn)VT(body, NODE_ADD_CHILD))(body, s_pause_pic);
-    }
-    show_pic = !((int (*)(void *))VT(s_pause_pic, NODE_IS_VISIBLE))(s_pause_pic);
-    ((setb_fn)VT(s_pause_pic, NODE_SET_VISIBLE))(s_pause_pic, show_pic);
-    for (i = 0; i < sizeof(s_pause_buttons) / sizeof(s_pause_buttons[0]); i++) {
-        void *b = *(void **)((uint8_t *)dlg + s_pause_buttons[i]);
-        if (b)
-            ((setb_fn)VT(b, NODE_SET_VISIBLE))(b, !show_pic);
-    }
+    sf_ui_show_controls();
 }
 
 /* Slot 0x26c: the original buttons, then ours, built as 0x4a38fd9c builds
@@ -163,7 +140,6 @@ static void pause_build(uint8_t *dlg)
     void *btn, *body = *(void **)(dlg + 0x174);
     int z = *(int32_t *)G(0x4a8f3fb0) - 1;
 
-    s_pause_pic = NULL;   /* the last dialog's went with it */
     ((obj_fn)G(0x4a390c60))(dlg);
     btn = ((void *(*)(uint32_t))G(0x4a78ac9c))(0x1b8);
     ((image_button_fn)G(0x4a161010))(btn, ASSET_DIR "pause_controls.png", ASSET_DIR "pause_selected.png",
@@ -207,6 +183,7 @@ void sf_ui_frame(void)
 
 void sf_ui_poll(void)
 {
+    sf_cheats_poll();
     static int at = -1;
     if (at < 0) {
         const char *e = getenv("SF_UI_TEST");
