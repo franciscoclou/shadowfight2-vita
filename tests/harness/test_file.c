@@ -12,6 +12,7 @@ void sf_log_write(const char *l, const char *f, int n, const char *fmt, ...) {}
 uint64_t sf_plat_time_us(void) { return 0; }
 void sf_prof_add(int cat, uint64_t us, uint32_t bytes) {}
 void sf_hud_file_opened(const char *name) {}
+const uint8_t *sf_ui_asset(const char *path, uint32_t *size) { return NULL; }
 
 extern const sf_export sf_exports_file[];
 static void *fn(const char *name)

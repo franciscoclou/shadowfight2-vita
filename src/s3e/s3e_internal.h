@@ -55,6 +55,13 @@ void sf_apply_patches(const struct sf_s3e_module *mod);
 /* --- cheats.c --- */
 void sf_cheats_install(const struct sf_s3e_module *mod);
 
+/* --- ui.c --- */
+void sf_ui_install(const struct sf_s3e_module *mod);
+void sf_ui_show_controls(void);
+void sf_ui_poll(void);   /* main thread, once per yield */
+void sf_ui_frame(void);  /* once per presented frame */
+const uint8_t *sf_ui_asset(const char *path, uint32_t *size);
+
 /* --- packs.c --- */
 void sf_packs_register(void);   /* before the entry point: list the packs in packs.xml */
 

@@ -3,7 +3,7 @@
  * expected original instruction, so a different game build is left alone
  * instead of being corrupted.
  */
-#include "s3e/s3e_internal.h"
+#include "s3e/game.h"
 #include "loader/s3e_loader.h"
 #include "platform/platform.h"
 
@@ -57,7 +57,9 @@ static void apply(const sf_s3e_module *mod, const sf_patch *p, size_t n)
 
 void sf_apply_patches(const sf_s3e_module *mod)
 {
+    sf_game_init(mod);
     apply(mod, s_always, sizeof(s_always) / sizeof(s_always[0]));
+    sf_ui_install(mod);
     if (sf_option_cheats()) {
         apply(mod, s_cheats, sizeof(s_cheats) / sizeof(s_cheats[0]));
         sf_cheats_install(mod);

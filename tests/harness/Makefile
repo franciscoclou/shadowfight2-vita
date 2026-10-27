@@ -8,10 +8,10 @@ CFLAGS  = -O1 -g -Wall -Wno-unused-parameter -I$(ROOT)/src -idirafter /usr/inclu
 LDFLAGS = -L/usr/lib/arm-linux-gnueabihf -Wl,-rpath-link,/usr/lib/arm-linux-gnueabihf
 LIBS    = -lEGL -lGLESv2 -lz -lm -lpthread
 
-SRC = $(wildcard $(ROOT)/src/s3e/*.c) $(ROOT)/src/loader/s3e_loader.c \
+SRC = $(wildcard $(ROOT)/src/s3e/*.c) $(wildcard $(ROOT)/src/s3e/*.S) $(ROOT)/src/loader/s3e_loader.c \
       plat_linux.c main_host.c log_host.c
 
-harness: $(SRC) $(wildcard $(ROOT)/src/*/*.h)
+harness: $(SRC) $(wildcard $(ROOT)/src/*/*.h) $(wildcard $(ROOT)/src/assets/*)
 	$(CC) $(CFLAGS) -o $@ $(SRC) $(LDFLAGS) $(LIBS)
 
 test_compress: test_compress.c $(ROOT)/src/s3e/compress.c

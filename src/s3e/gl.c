@@ -321,6 +321,7 @@ static unsigned sf_eglSwapBuffers(EGLDisplay d, EGLSurface s)
     sf_plat_swap();
     sf_prof_frame();
     sf_hud_frame();
+    sf_ui_frame();
     if (frames++ == 0)
         LOGI("first eglSwapBuffers");
     return 1;

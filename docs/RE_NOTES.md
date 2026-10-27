@@ -253,3 +253,50 @@ crash, so s3eDeviceGetInt reports 640 MB (RAM + CDRAM).
   is at +0x180 after __dynamic_cast (0x4a791850) from DialogObject
   (0x4a8cc5ac) to SimpleDialog (0x4a8b8888). The dialog factory is
   0x4a51c1b0; type 4 is the quit dialog (ExitDialog, 0x4a376e74).
+- Level +1 (original case 3): profile 0x4a27b924(), XP the next level
+  needs 0x4a287f24(profile), awarded through 0x4a28fe44(profile, xp),
+  which levels up and stops at the cap; then 0x4a6ac6d4 (dialog refresh).
+  0x4a266ed4 (manager) and 0x4a27b924 (manager+0xb1c, the current user)
+  are singletons and ignore r0.
+
+## Controller scale
+
+- Profile key `ControllerScale` (users.xml). Getter 0x4a67c364: the
+  profile's value, or !byte 0x4a8fa440 when absent; nonzero = Large.
+  Toggle 0x4a67c540 (only caller: the Settings click 0x4a3db2d4).
+- The HUD (0x4a3f0cd0, 0x4a3f0d3c) scales its controls by 1.32 when Large.
+- Advanced Settings row: icon at dlg+0x238, label slot dlg+0x25c, written
+  by 0x4a3d97ac ("Settings_Controller_Scale: Large/Small") through
+  0x4a3dbe68(dlg, slot, anchor, text), which places a size-64 label right
+  of the anchor. Music/sound/GDPR rows use slots +0x264/+0x260/+0x268.
+- ui.c forces Large and turns the row into "Controls".
+
+## Pause dialog (PauseFightDialog)
+
+- Constructor 0x4a3901d0, vtable 0x4a8c4330; slot 0x26c (0x4a390c60)
+  builds the buttons into the body dlg+0x174: home (-300,-104), music
+  (-100,-104), sound, play (300,-104), all through slot 0x2a4
+  (0x4a38fd9c) from the batchPause atlas, scaled 2.08 (72 px icons).
+- Image button: 0x4a161010(btn[0x1b8], normal, pressed, id, z, 255f,
+  255f, atlas, 1); with atlas NULL the images are files (0x4a1608b8 ->
+  0x4a19013c). Then slot 0x284(name), 0x4a1607dc(press scale 1.3).
+  z is *(int *)0x4a8f3fb0 - 1.
+
+## UI building blocks
+
+- Sprite from a file: 0x4a19013c(path, -1), path relative to the asset
+  set ("textures/..." opens "assets/768/textures/...").
+- Label in the game font: 0x4a6964c8(text, 0, 2) ("sakkal"), size
+  0x4a184700(label, px). Its origin is the centre of its text.
+- Text button: 0x4a692ca4(style, ...); the last-but-one argument is the
+  skin atlas (NULL loads files). Dialog buttons pass dlg+0x158.
+- CCNode vtable: 0x40 setScale, 0x54 setPosition(x, y), 0x5c/0x60 X,
+  0x64/0x68 Y, 0x88/0x8c content size, 0x90 setVisible, 0xc8 addChild.
+- SimpleDialog 0x4a50f6a4: 0 buttons if ok and cancel are empty, 1 if
+  only cancel is; a6 picks the button skin (1 beige, 0 brown). The
+  message label is dlg+0x1bc and the dialog's height follows it.
+  0x4a324678 reads the content as a label (+0x128), so it cannot be a
+  plain sprite. Its scroll ends are fight/popups/result/Background_Left
+  and _Right.png, shipped as Background_left/right.png: found on the
+  Vita's case-insensitive exFAT, shown as misc/no_image.png ("?") on the
+  Linux harness.

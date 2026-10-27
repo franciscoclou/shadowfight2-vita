@@ -6,6 +6,8 @@
  *   raw://x  -> x               (host path)
  *   x        -> ram first, then rom (Marmalade's default search order)
  *
+ * The port's own images (ui.c, textures/sfport/) are memory files.
+ *
  * s3eFileAddUserFileSys is how Derbh (the .dz archive layer the game links
  * statically) makes archive members openable: every s3eFileOpen offers the
  * name to each registered user filesystem before touching the disk.
@@ -157,6 +159,17 @@ static sf_file *sf_s3eFileOpen_(const char *name, const char *mode)
     if (!name || !mode) {
         s_err = S3E_FILE_ERR_PARAM;
         return NULL;
+    }
+    if (!is_writable_mode(mode)) {
+        uint32_t size;
+        const uint8_t *data = sf_ui_asset(name, &size);
+        if (data) {
+            f = calloc(1, sizeof(*f));
+            f->kind = 3;
+            f->mem = data;
+            f->mem_size = size;
+            return f;
+        }
     }
     /* User filesystems first, read-only opens only (Derbh is read-only). */
     if (!is_writable_mode(mode)) {
@@ -428,8 +441,12 @@ static int32_t sf_s3eFileCheckExists(const char *name)
     struct stat st;
     sf_file *f;
 
+    uint32_t size;
+
     if (!name)
         return 0;
+    if (sf_ui_asset(name, &size))
+        return 1;
     resolve(name, path, sizeof(path), 0);
     if (stat(path, &st) == 0)
         return 1;
@@ -448,9 +465,12 @@ static int64_t sf_s3eFileGetFileInt(const char *name, int32_t prop)
 {
     char path[512];
     struct stat st;
+    uint32_t size;
 
     if (!name)
         return -1;
+    if (sf_ui_asset(name, &size))
+        return prop == 1 ? 1 : prop == 4 ? (int64_t)size : prop == 5 ? 0 : prop <= 3 ? 0 : -1;
     resolve(name, path, sizeof(path), 0);
     if (stat(path, &st) != 0) {
         if (prop == 0 || prop == 1 || prop == 2)

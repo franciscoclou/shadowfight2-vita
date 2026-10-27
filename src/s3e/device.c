@@ -100,6 +100,7 @@ static int64_t sf_s3eDeviceYield(int32_t ms)
     }
     do {
         sf_input_poll();
+        sf_ui_poll();
         sf_sound_poll();
         run_timers();
         if (ms > 0) {
