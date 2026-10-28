@@ -396,6 +396,12 @@ glGetError after the call and logs the first failures by name).
   delta, previous and end positions), interpolated every frame. prof.c
   hooks both frame-count getters and logs a per-frame trace ("trace
   lineup" / "trace vs" in debug.log).
+- Found with that trace: the Vita ran the line-up at a steady 16.6 ms per
+  frame (after one 8.9 s first frame, the fight loading), yet the scroll
+  jumped. cocos2d's clock is the game's gettimeofday (0x4a78c660 =
+  s3eTimerGetUTC split into s and (ms % 1000) * 1000 us), and our UTC was
+  time(NULL) * 1000: every CCAction advanced once a second. UTC now ticks
+  in ms. Fights step per frame and never noticed.
 
 ## Quest scripts
 

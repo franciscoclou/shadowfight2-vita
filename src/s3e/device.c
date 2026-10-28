@@ -25,9 +25,19 @@ uint64_t sf_time_ms(void)
 static uint64_t sf_s3eTimerGetMs(void) { return sf_time_ms(); }
 static uint64_t sf_s3eTimerGetUST(void) { return sf_time_ms(); }
 
+/* Wall-clock ms. It has to tick every millisecond, not every second: the
+ * game's gettimeofday (0x4a78c660) is this split into seconds and
+ * (ms % 1000) * 1000 us, and cocos2d times every action with it. With
+ * time(NULL) * 1000 the actions saw a 0 s step most frames and a 1 s step
+ * once a second, so menus, dialogs and the bodyguard line-up moved in
+ * jumps. The seconds come from the clock once; the rest from the
+ * monotonic timer. */
 static uint64_t sf_s3eTimerGetUTC(void)
 {
-    return (uint64_t)time(NULL) * 1000;
+    static int64_t offset;
+    if (!offset)
+        offset = (int64_t)time(NULL) * 1000 - (int64_t)sf_time_ms();
+    return (uint64_t)((int64_t)sf_time_ms() + offset);
 }
 
 static int64_t sf_s3eTimerGetLocaltimeOffset(void)
