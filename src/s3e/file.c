@@ -90,6 +90,7 @@ static void ufs_unlock(void)
 typedef struct sf_file {
     int kind;                 /* 1 = stdio (writable), 2 = user fs, 3 = memory, 4 = buffered read,
                                  5 = deferred write */
+    int mem_owned;            /* kind 3: mem is ours to free */
     FILE *fp;
     uint8_t *rb;              /* kind 4: buffer holding file bytes [rb_off, rb_off + rb_len) */
     int64_t rb_off, pos, size, fpos;
@@ -362,6 +363,7 @@ static void make_parents(const char *path)
 /* --- open/close -------------------------------------------------------- */
 
 static sf_file *sf_s3eFileOpen_(const char *name, const char *mode);
+static sf_file *open_raw(const char *name, const char *mode);
 
 static sf_file *sf_s3eFileOpen(const char *name, const char *mode)
 {
@@ -373,7 +375,26 @@ static sf_file *sf_s3eFileOpen(const char *name, const char *mode)
     return f;
 }
 
+/* Quest scripts are read edited (quests.c); everything else as is. */
 static sf_file *sf_s3eFileOpen_(const char *name, const char *mode)
+{
+    if (name && mode && !is_writable_mode(mode) && sf_quests_wants(name)) {
+        uint32_t size = 0;
+        void *data = sf_quests_load(name, &size);
+        sf_file *f;
+        if (data && (f = calloc(1, sizeof(*f)))) {
+            f->kind = 3;
+            f->mem = data;
+            f->mem_size = size;
+            f->mem_owned = 1;
+            return f;
+        }
+        free(data);
+    }
+    return open_raw(name, mode);
+}
+
+static sf_file *open_raw(const char *name, const char *mode)
 {
     char path[512];
     sf_file *f;
@@ -500,6 +521,8 @@ static int32_t sf_s3eFileClose(sf_file *f)
         ufs_lock();
         f->ufs->close(f->uh);
         ufs_unlock();
+    } else if (f->kind == 3 && f->mem_owned) {
+        free((void *)f->mem);
     }
     free(f);
     return S3E_RESULT_SUCCESS;
@@ -797,6 +820,14 @@ static int64_t sf_s3eFileGetFileInt(const char *name, int32_t prop)
         return -1;
     if (sf_ui_asset(name, &size))
         return prop == 1 ? 1 : prop == 4 ? (int64_t)size : prop == 5 ? 0 : prop <= 3 ? 0 : -1;
+    if (prop == 4 && sf_quests_wants(name)) {
+        sf_file *f = sf_s3eFileOpen_(name, "rb");
+        if (f) {
+            int64_t r = sf_s3eFileGetSize(f);
+            sf_s3eFileClose(f);
+            return r;
+        }
+    }
     /* A file inside a content pack exists only in the user filesystems
      * (Derbh), which answer first, as they do for opens. Without this
      * the game sized every pack file at nothing: the zone 2+ arenas read
@@ -943,11 +974,23 @@ static int32_t sf_s3eFileListClose(sf_list *l)
     return S3E_RESULT_SUCCESS;
 }
 
+static void *load(sf_file *f, uint32_t *size);
+
 /* Read a whole game file (any drive or user filesystem) into a malloc'd
  * buffer, for shims that take a file name, like s3eAudioPlay. */
 void *sf_file_load(const char *name, uint32_t *size)
 {
-    sf_file *f = sf_s3eFileOpen(name, "rt");   /* as CCSAXParser opens */
+    return load(sf_s3eFileOpen(name, "rt"), size);   /* as CCSAXParser opens */
+}
+
+/* The same, bypassing quests.c's edits. */
+void *sf_file_load_raw(const char *name, uint32_t *size)
+{
+    return load(open_raw(name, "rb"), size);
+}
+
+static void *load(sf_file *f, uint32_t *size)
+{
     int32_t n;
     void *buf = NULL;
 

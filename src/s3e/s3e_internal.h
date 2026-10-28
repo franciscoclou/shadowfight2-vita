@@ -84,6 +84,12 @@ int  sf_thread_is_main(void);
 void *sf_file_load(const char *name, uint32_t *size);
 void sf_file_selftest(const char *name);   /* harness diagnostics */
 void sf_file_sync(void);   /* wait for the deferred writes to reach the disk */
+void *sf_file_load_raw(const char *name, uint32_t *size);   /* without quests.c's edits */
+
+/* --- quests.c --- */
+int sf_quests_wants(const char *name);
+void *sf_quests_load(const char *name, uint32_t *size);
+void sf_quests_selftest(const char *dir);   /* harness diagnostics */
 
 /* --- sound.c --- */
 void sf_sound_poll(void);   /* main thread: deliver queued audio callbacks */
@@ -91,6 +97,7 @@ void sf_sound_poll(void);   /* main thread: deliver queued audio callbacks */
 /* --- input.c --- */
 int  sf_touch_controls_shown(void);
 int  sf_option_cheats(void);
+int  sf_option_remove_online(void);
 void sf_input_poll(void);
 
 /* --- gl.c --- */

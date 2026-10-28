@@ -24,6 +24,16 @@ static const sf_patch s_always[] = {
     { "pack check", 0x4a69f028, 0xebed6db3 /* bl 0x4a1fa6fc */, 0xebe59415 /* bl 0x4a004084 */ },
 };
 
+/* remove_online (controls.txt, the default): quests.c edits the quest
+ * scripts, which are RSA-signed (.sha). FUN_4a6a3af4(path, data, len)
+ * verifies a signature for the protected loader (0x4a6a4134), which
+ * refuses the file when it returns 0; it now returns 1. The .hash check
+ * after it stays, and quests.c answers it. */
+static const sf_patch s_remove_online[] = {
+    { "quest signatures", 0x4a6a3af4, 0xe92d4ff0 /* push {r4-r11, lr} */, 0xe3a00001 /* mov r0, #1 */ },
+    { "quest signatures", 0x4a6a3af8, 0xe1a04000 /* mov r4, r0 */, 0xe12fff1e /* bx lr */ },
+};
+
 /* cheats (controls.txt "cheats = 1", the default).
  *
  * shop cheats: the shop's constructor (0x4a65fc28) copies the debug flag
@@ -61,6 +71,8 @@ void sf_apply_patches(const sf_s3e_module *mod)
     apply(mod, s_always, sizeof(s_always) / sizeof(s_always[0]));
     sf_ui_install(mod);
     sf_packs_install_unlocks();
+    if (sf_option_remove_online())
+        apply(mod, s_remove_online, sizeof(s_remove_online) / sizeof(s_remove_online[0]));
     if (sf_option_cheats()) {
         apply(mod, s_cheats, sizeof(s_cheats) / sizeof(s_cheats[0]));
         sf_cheats_install(mod);

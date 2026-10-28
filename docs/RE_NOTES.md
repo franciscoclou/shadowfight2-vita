@@ -387,3 +387,29 @@ glGetError after the call and logs the first failures by name).
   Delay 0.5, CallFunc, Delay 2.0). Neither screen overrides draw or
   update: the scroll is plain cocos2d, so a choppy scroll means slow
   frames, not a broken animation.
+
+## Quest scripts
+
+- Offers, ads, prompts and most story beats are quests: assets/quests.xml
+  (526 live quests) plus the files its AttachQuestFile actions load from
+  assets/quest_extensions/ (promotions, dynamic_discounts, raid_quests,
+  update_1_2_0_0, intermission/story, zone_N/core and story): 1350 in all.
+  Some names repeat across files, and some files keep commented-out copies.
+- A quest runs on its <Events> (FightEnd, SessionStart, MapButtonPress,
+  ...) when all <Conditions> hold. `<Activate ActionID="X"/>` raises the
+  Activate event; quests listening to it test `_$ActionID == X`.
+  `_Name` reads a saved variable, `?Func(args).Prop` a game query.
+- ?SysInfo().Amazon / China / WinStore select store variants: the Amazon
+  ones (EnergyRefillAmazon, LevelUpAmazon) are the same dialogs without
+  the video-ad and Facebook-share parts. _DiscipleFlag > 0 marks a payer
+  (set on a real purchase) and gates ads and some offers.
+- The `Purchase` event fires for every shop purchase, coins included
+  (Delivery, NewBestWeapon... are gameplay); `PrePurchase` and
+  `?Purchase(x).Type == RealMoneyItem` single out real money.
+- Loading (0x4a6a4134): files listed as protected (0x4a6c6224) must pass
+  an RSA signature check of <file>.sha (0x4a6a3af4, only caller) and the
+  .hash check (0x4a1f7d04: MD5 of path + contents + device ID, written
+  twice); either failure refuses the file (returns 4). The game's own
+  log calls (0x4a1d5570) print nothing in this build.
+- src/s3e/quests.c edits these files as they are read; the list and the
+  reasons are in its table.

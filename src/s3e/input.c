@@ -47,7 +47,7 @@ static int find_touch(const sf_input *in, int id)
 /* --- virtual touches ------------------------------------------------------ */
 
 #define VPAD_ID 200
-#define CONTROLS_VERSION 5
+#define CONTROLS_VERSION 6
 #define CONTROLS_COMPATIBLE 2   /* older files had punch and kick swapped */
 #define CONTROLS_RANGED_FIXED 5 /* older files had guessed ranged and magic */
 
@@ -76,6 +76,7 @@ static int s_dash_dir;          /* -1 left, 1 right, 0 none */
 static uint64_t s_dash_start;
 static int s_touch_controls;   /* draw the on-screen fight controls */
 static int s_cheats = 1;       /* cheats panel and unlimited energy (patches.c) */
+static int s_remove_online = 1; /* hide offers, ads and online prompts (quests.c) */
 
 static void ensure_controls(void);
 
@@ -89,6 +90,12 @@ int sf_option_cheats(void)
 {
     ensure_controls();
     return s_cheats;
+}
+
+int sf_option_remove_online(void)
+{
+    ensure_controls();
+    return s_remove_online;
 }
 
 static void controls_path(char *path, size_t n)
@@ -114,9 +121,12 @@ static void save_controls(void)
                "# 1 turns the cheats on at the next launch: unlimited energy, and a\n"
                "# button in the shop to a panel with coins, gems and a progress reset.\n"
                "cheats = %d\n"
+               "# 1 removes what needs the internet at the next launch: offers, ads,\n"
+               "# Facebook, rating and news prompts, raid invitations.\n"
+               "remove_online = %d\n"
                "# joystick = centre x, centre y, drag radius, stick deadzone (0-127)\n"
                "joystick = %d %d %d %d\n",
-            CONTROLS_VERSION, s_touch_controls, s_cheats, s_joy_x, s_joy_y, s_joy_r, s_deadzone);
+            CONTROLS_VERSION, s_touch_controls, s_cheats, s_remove_online, s_joy_x, s_joy_y, s_joy_r, s_deadzone);
     for (i = 0; i < V_NBUTTONS; i++)
         fprintf(f, "%s = %d %d\n", s_vbtn[i].name, s_vbtn[i].x, s_vbtn[i].y);
     fclose(f);
@@ -157,6 +167,10 @@ static void load_controls(void)
         if (sscanf(line, " cheats = %d", &x) == 1) {
             if (version >= 4)
                 s_cheats = x != 0;
+            continue;
+        }
+        if (sscanf(line, " remove_online = %d", &x) == 1) {
+            s_remove_online = x != 0;
             continue;
         }
         if (sscanf(line, " joystick = %d %d %d %d", &x, &y, &r, &dz) == 4) {
