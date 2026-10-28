@@ -321,16 +321,31 @@ def github_mask(px):
 
 
 def watermark():
-    """In the ink of the parchment it sits on (the shop's item scroll)."""
+    """Gold like the game's own titles: gradient, dark outline, drop shadow."""
     mark_px, text_px = 72, 70
-    t = text("franciscoclou", text_px, INK, shadow=False)
-    mark = Image.new("RGBA", (mark_px, mark_px), INK + (255,))
-    mark.putalpha(github_mask(mark_px))
-    w = mark_px + 16 + t.width
-    h = max(mark_px, t.height)
+    t = text("franciscoclou", text_px, CREAM, gradient=GOLD)
+    m = github_mask(mark_px)
+    pad = max(3, mark_px // 10)
+    mark = Image.new("RGBA", (mark_px + 2 * pad, mark_px + 2 * pad))
+    o = Image.new("L", mark.size)
+    o.paste(m, (pad, pad))
+    o = o.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(mark_px / 40))
+    sh = Image.new("RGBA", mark.size, SHADOW + (0,))
+    sh.putalpha(o.point(lambda v: int(v * 0.9)))
+    mark.alpha_composite(sh, (0, 0))
+    mark.alpha_composite(sh, (0, max(1, mark_px // 30)))
+    fill = Image.new("RGBA", (mark_px, mark_px))
+    d = ImageDraw.Draw(fill)
+    for y in range(mark_px):
+        k = y / (mark_px - 1)
+        d.line([(0, y), (mark_px, y)], fill=tuple(round(c + (g - c) * k) for c, g in zip(CREAM, GOLD)) + (255,))
+    fill.putalpha(m)
+    mark.alpha_composite(fill, (pad, pad))
+    w = mark.width + 12 + t.width
+    h = max(mark.height, t.height)
     im = Image.new("RGBA", (w, h))
-    im.alpha_composite(mark, (0, (h - mark_px) // 2))
-    im.alpha_composite(t, (mark_px + 16, (h - t.height) // 2))
+    im.alpha_composite(mark, (0, (h - mark.height) // 2))
+    im.alpha_composite(t, (mark.width + 12, (h - t.height) // 2))
     im = im.crop(im.getbbox())
     im.save(out / "watermark.png", optimize=True)
     return im
