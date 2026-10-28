@@ -78,6 +78,7 @@ static int game_thread(SceSize args, void *argp)
     LOGI("game thread: entering s3e entry %p", (void *)sf_game.entry);
     sf_log_flush();
     sf_game.entry();
+    sf_file_sync();
     LOGI("s3e entry returned");
     sf_log_flush();
     sceKernelExitProcess(0);

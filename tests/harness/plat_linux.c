@@ -174,6 +174,7 @@ void sf_plat_swap(void)
     if (s_frame >= max) {
         save_frame();
         LOGI("harness: reached %u frames, stopping", s_frame);
+        sf_file_sync();
         sf_log_flush();
         exit(0);
     }

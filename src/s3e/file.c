@@ -88,7 +88,8 @@ static void ufs_unlock(void)
 #define RBUF_SIZE (16 * 1024)
 
 typedef struct sf_file {
-    int kind;                 /* 1 = stdio (writable), 2 = user fs, 3 = memory, 4 = buffered read */
+    int kind;                 /* 1 = stdio (writable), 2 = user fs, 3 = memory, 4 = buffered read,
+                                 5 = deferred write */
     FILE *fp;
     uint8_t *rb;              /* kind 4: buffer holding file bytes [rb_off, rb_off + rb_len) */
     int64_t rb_off, pos, size, fpos;
@@ -99,7 +100,192 @@ typedef struct sf_file {
     uint32_t mem_size, mem_pos;
     int eof;
     int writing;
+    char *wpath;              /* kind 5: the file's disk path */
+    uint8_t *wb;              /* kind 5: everything written, [0, wb_len) */
+    uint32_t wb_len, wb_cap, wb_pos;
+    int append;
+    int64_t base;             /* kind 5, append: size on disk before, -1 until asked */
 } sf_file;
+
+static void make_parents(const char *path);
+
+/* --- write-behind ------------------------------------------------------ */
+
+/* The game saves its profile on nearly every shop or dialog click, and on
+ * the memory card creating or truncating a file and closing it again took
+ * ~200 ms, all inside the frame that handled the click. A file opened only
+ * to write ("w" or "a", no '+') is now kept in memory (kind 5) and handed
+ * on close to a writer thread, which runs the queued jobs in order. Before
+ * anything looks at a path that still has a job queued (an open for
+ * reading, a stat, a listing, a rename) it waits for that job, so the game
+ * never sees the disk behind its own writes. */
+
+enum { JOB_WRITE, JOB_APPEND, JOB_DELETE, JOB_MKDIR };
+
+typedef struct sf_job {
+    struct sf_job *next;
+    int type;
+    char *path;
+    uint8_t *data;
+    uint32_t len;
+} sf_job;
+
+static pthread_mutex_t s_wq_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t s_wq_cond = PTHREAD_COND_INITIALIZER;   /* a job queued or finished */
+static sf_job *s_wq_head, *s_wq_tail, *s_wq_busy;
+static int s_wq_started;
+
+static void run_job(const sf_job *j)
+{
+    FILE *fp;
+    switch (j->type) {
+    case JOB_WRITE:
+    case JOB_APPEND:
+        make_parents(j->path);
+        if (!(fp = fopen(j->path, j->type == JOB_APPEND ? "ab" : "wb"))) {
+            LOGW("file: cannot write %s", j->path);
+            break;
+        }
+        if (j->len && fwrite(j->data, 1, j->len, fp) != j->len)
+            LOGW("file: short write to %s", j->path);
+        fclose(fp);
+        break;
+    case JOB_DELETE:
+        remove(j->path);
+        break;
+    case JOB_MKDIR:
+        make_parents(j->path);
+        mkdir(j->path, 0777);
+        break;
+    }
+}
+
+static void free_job(sf_job *j)
+{
+    free(j->path);
+    free(j->data);
+    free(j);
+}
+
+static void *writer_thread(void *arg)
+{
+    sf_plat_worker_thread();
+    pthread_mutex_lock(&s_wq_lock);
+    for (;;) {
+        sf_job *j;
+        while (!s_wq_head)
+            pthread_cond_wait(&s_wq_cond, &s_wq_lock);
+        j = s_wq_head;
+        if (!(s_wq_head = j->next))
+            s_wq_tail = NULL;
+        s_wq_busy = j;
+        pthread_mutex_unlock(&s_wq_lock);
+        LOGV("file: writing %s (%u bytes)", j->path, (unsigned)j->len);
+        run_job(j);
+        pthread_mutex_lock(&s_wq_lock);
+        s_wq_busy = NULL;
+        free_job(j);
+        pthread_cond_broadcast(&s_wq_cond);
+    }
+    return NULL;
+}
+
+/* Takes ownership of data. Without a writer thread the job runs here. */
+static void wq_push(int type, const char *path, uint8_t *data, uint32_t len)
+{
+    sf_job *j = calloc(1, sizeof(*j));
+    if (!j || !(j->path = strdup(path))) {
+        sf_job tmp = { NULL, type, (char *)path, data, len };
+        run_job(&tmp);
+        free(data);
+        free(j);
+        return;
+    }
+    j->type = type;
+    j->data = data;
+    j->len = len;
+    pthread_mutex_lock(&s_wq_lock);
+    if (!s_wq_started) {
+        pthread_attr_t a;
+        pthread_t t;
+        pthread_attr_init(&a);
+        pthread_attr_setstacksize(&a, 64 * 1024);
+        pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
+        s_wq_started = pthread_create(&t, &a, writer_thread, NULL) == 0 ? 1 : -1;
+        pthread_attr_destroy(&a);
+        if (s_wq_started < 0)
+            LOGW("file: no writer thread, writing synchronously");
+    }
+    if (s_wq_started < 0) {
+        pthread_mutex_unlock(&s_wq_lock);
+        run_job(j);
+        free_job(j);
+        return;
+    }
+    if (s_wq_tail)
+        s_wq_tail->next = j;
+    else
+        s_wq_head = j;
+    s_wq_tail = j;
+    pthread_cond_broadcast(&s_wq_cond);
+    pthread_mutex_unlock(&s_wq_lock);
+}
+
+/* path itself, or a file under the directory path. */
+static int path_covers(const char *query, const char *job)
+{
+    size_t n = strlen(query);
+    return !strncmp(job, query, n) && (job[n] == 0 || job[n] == '/');
+}
+
+static int wq_pending_locked(const char *path)
+{
+    const sf_job *j;
+    if (s_wq_busy && (!path || path_covers(path, s_wq_busy->path)))
+        return 1;
+    for (j = s_wq_head; j; j = j->next)
+        if (!path || path_covers(path, j->path))
+            return 1;
+    return 0;
+}
+
+static int wq_pending(const char *path)
+{
+    int r;
+    if (s_wq_started <= 0)
+        return 0;
+    pthread_mutex_lock(&s_wq_lock);
+    r = wq_pending_locked(path);
+    pthread_mutex_unlock(&s_wq_lock);
+    return r;
+}
+
+/* Wait until no queued job touches path (NULL: until the queue is empty). */
+static void wq_wait(const char *path)
+{
+    uint64_t t0 = 0, us;
+    if (s_wq_started <= 0)
+        return;
+    pthread_mutex_lock(&s_wq_lock);
+    while (wq_pending_locked(path)) {
+        if (!t0)
+            t0 = sf_plat_time_us();
+        pthread_cond_wait(&s_wq_cond, &s_wq_lock);
+    }
+    pthread_mutex_unlock(&s_wq_lock);
+    if (!t0)
+        return;
+    us = sf_plat_time_us() - t0;
+    sf_prof_add(SF_PROF_WRITE, us, 0);
+    if (us >= 10000)
+        LOGI("file: waited %u ms for the pending write of %s", (unsigned)(us / 1000), path ? path : "all");
+}
+
+/* Everything written so far is on the disk once this returns. */
+void sf_file_sync(void)
+{
+    wq_wait(NULL);
+}
 
 /* --- paths ------------------------------------------------------------- */
 
@@ -149,9 +335,14 @@ static void resolve(const char *name, char *out, size_t n, int for_write)
         snprintf(out, n, "%s", rest);
     else {
         join(out, n, ram, norm);
-        if (!for_write && stat(out, &st) != 0)
-            join(out, n, sf_data_dir, norm);
+        if (!for_write) {
+            wq_wait(out);
+            if (stat(out, &st) != 0)
+                join(out, n, sf_data_dir, norm);
+        }
     }
+    if (!for_write)
+        wq_wait(out);
 }
 
 /* mkdir -p for the parent of a ram:// file about to be written. */
@@ -230,8 +421,21 @@ static sf_file *sf_s3eFileOpen_(const char *name, const char *mode)
     if (!is_writable_mode(mode))
         sf_hud_file_opened(name);
     resolve(name, path, sizeof(path), is_writable_mode(mode));
-    if (is_writable_mode(mode))
+    if (is_writable_mode(mode) && !strchr(mode, '+') && !strchr(mode, 'r')) {
+        f = calloc(1, sizeof(*f));
+        if (f && (f->wpath = strdup(path))) {
+            f->kind = 5;
+            f->append = strchr(mode, 'a') != NULL;
+            f->base = -1;
+            LOGV("s3eFileOpen(%s, %s) -> %s (deferred)", name, mode, path);
+            return f;
+        }
+        free(f);
+    }
+    if (is_writable_mode(mode)) {
+        wq_wait(path);   /* read-write: the disk copy must be current */
         make_parents(path);
+    }
     {
         char m[8];
         snprintf(m, sizeof(m), "%s%s", mode, strchr(mode, 'b') ? "" : "b");
@@ -282,7 +486,10 @@ static int32_t sf_s3eFileClose(sf_file *f)
         s_err = S3E_FILE_ERR_PARAM;
         return S3E_RESULT_ERROR;
     }
-    if (f->kind == 1 && f->writing) {
+    if (f->kind == 5) {
+        wq_push(f->append ? JOB_APPEND : JOB_WRITE, f->wpath, f->wb, f->wb_len);
+        free(f->wpath);
+    } else if (f->kind == 1 && f->writing) {
         uint64_t t0 = sf_plat_time_us();
         fclose(f->fp);
         sf_prof_add(SF_PROF_WRITE, sf_plat_time_us() - t0, 0);
@@ -377,10 +584,50 @@ static uint32_t sf_s3eFileRead(void *buf, uint32_t size, uint32_t count, sf_file
     }
 }
 
+static uint32_t deferred_write(sf_file *f, const void *buf, uint32_t size, uint32_t count)
+{
+    uint32_t len = size * count, at = f->append ? f->wb_len : f->wb_pos;
+    if (!size || count > UINT32_MAX / size || at > UINT32_MAX - len)
+        return 0;
+    if (at + len > f->wb_cap) {
+        uint32_t cap = f->wb_cap ? f->wb_cap : 16 * 1024;
+        uint8_t *nb;
+        while (cap < at + len)
+            cap *= 2;
+        if (!(nb = realloc(f->wb, cap)))
+            return 0;
+        f->wb = nb;
+        f->wb_cap = cap;
+    }
+    if (at > f->wb_len)
+        memset(f->wb + f->wb_len, 0, at - f->wb_len);   /* seeked past the end */
+    memcpy(f->wb + at, buf, len);
+    at += len;
+    if (at > f->wb_len)
+        f->wb_len = at;
+    if (!f->append)
+        f->wb_pos = at;
+    return count;
+}
+
+/* Size of an append file's disk copy before this open, once all queued
+ * writes to it have landed. */
+static int64_t append_base(sf_file *f)
+{
+    struct stat st;
+    if (f->base < 0) {
+        wq_wait(f->wpath);
+        f->base = stat(f->wpath, &st) == 0 ? (int64_t)st.st_size : 0;
+    }
+    return f->base;
+}
+
 static uint32_t sf_s3eFileWrite(const void *buf, uint32_t size, uint32_t count, sf_file *f)
 {
     uint64_t t0;
     uint32_t n;
+    if (f && f->kind == 5 && buf)
+        return deferred_write(f, buf, size, count);
     if (!f || f->kind != 1)
         return 0;
     t0 = sf_plat_time_us();
@@ -398,6 +645,15 @@ static int32_t sf_s3eFileSeek(sf_file *f, int32_t off, int32_t origin)
     switch (f->kind) {
     case 1:
         return fseek(f->fp, off, whence) == 0 ? S3E_RESULT_SUCCESS : S3E_RESULT_ERROR;
+    case 5: {
+        /* Appends always go to the end, as with stdio. */
+        int64_t pos = whence == SEEK_SET ? off : whence == SEEK_CUR ? (int64_t)f->wb_pos + off
+                                                                    : (int64_t)f->wb_len + off;
+        if (pos < 0 || pos > UINT32_MAX)
+            return S3E_RESULT_ERROR;
+        f->wb_pos = (uint32_t)pos;
+        return S3E_RESULT_SUCCESS;
+    }
     case 4: {
         int64_t pos = whence == SEEK_SET ? off : whence == SEEK_CUR ? f->pos + off : f->size + off;
         if (pos < 0)
@@ -430,6 +686,7 @@ static int32_t sf_s3eFileTell(sf_file *f)
     switch (f->kind) {
     case 1: return (int32_t)ftell(f->fp);
     case 4: return (int32_t)f->pos;
+    case 5: return (int32_t)(f->append ? append_base(f) + f->wb_len : f->wb_pos);
     case 2: {
         int32_t r;
         ufs_lock();
@@ -450,6 +707,8 @@ static int32_t sf_s3eFileGetSize(sf_file *f)
         return (int32_t)f->mem_size;
     if (f->kind == 4)
         return (int32_t)f->size;
+    if (f->kind == 5)
+        return (int32_t)((f->append ? append_base(f) : 0) + f->wb_len);
     ufs_lock();   /* one atomic query, for the user filesystems' sake */
     cur = sf_s3eFileTell(f);
     sf_s3eFileSeek(f, 0, 2);
@@ -474,6 +733,8 @@ static int32_t sf_s3eFileEOF(sf_file *f)
         return f->eof || feof(f->fp);
     if (f->kind == 4)
         return f->eof || f->pos >= f->size;
+    if (f->kind == 5)
+        return f->wb_pos >= f->wb_len;
     return f->mem_pos >= f->mem_size;
 }
 
@@ -583,12 +844,18 @@ static int64_t sf_s3eFileGetFileInt(const char *name, int32_t prop)
 
 static int32_t sf_s3eFileGetError(void) { return s_err; }
 
+/* Queued like a write; only whether there is anything to delete is
+ * answered now. */
 static int32_t sf_s3eFileDelete(const char *name)
 {
     char path[512];
+    struct stat st;
     resolve(name, path, sizeof(path), 1);
     LOGV("s3eFileDelete(%s) -> %s", name, path);
-    return remove(path) == 0 ? S3E_RESULT_SUCCESS : S3E_RESULT_ERROR;
+    if (!wq_pending(path) && stat(path, &st) != 0)
+        return S3E_RESULT_ERROR;
+    wq_push(JOB_DELETE, path, NULL, 0);
+    return S3E_RESULT_SUCCESS;
 }
 
 static int32_t sf_s3eFileRename(const char *from, const char *to)
@@ -596,6 +863,7 @@ static int32_t sf_s3eFileRename(const char *from, const char *to)
     char a[512], b[512];
     resolve(from, a, sizeof(a), 0);
     resolve(to, b, sizeof(b), 1);
+    wq_wait(b);
     remove(b);
     return rename(a, b) == 0 ? S3E_RESULT_SUCCESS : S3E_RESULT_ERROR;
 }
@@ -604,8 +872,7 @@ static int32_t sf_s3eFileMakeDirectory(const char *name)
 {
     char path[512];
     resolve(name, path, sizeof(path), 1);
-    make_parents(path);
-    mkdir(path, 0777);
+    wq_push(JOB_MKDIR, path, NULL, 0);
     return S3E_RESULT_SUCCESS;
 }
 

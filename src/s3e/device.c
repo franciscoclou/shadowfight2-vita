@@ -123,6 +123,7 @@ static int32_t sf_s3eDeviceRequestQuit(void) { s_quit = 1; return 0; }
 static void sf_s3eDeviceExit(int32_t code)
 {
     LOGI("s3eDeviceExit(%d)", (int)code);
+    sf_file_sync();
     sf_log_flush();
     exit(code);
 }
