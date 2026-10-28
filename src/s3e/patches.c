@@ -32,33 +32,6 @@ static const sf_patch s_always[] = {
 static const sf_patch s_remove_online[] = {
     { "quest signatures", 0x4a6a3af4, 0xe92d4ff0 /* push {r4-r11, lr} */, 0xe3a00001 /* mov r0, #1 */ },
     { "quest signatures", 0x4a6a3af8, 0xe1a04000 /* mov r4, r0 */, 0xe12fff1e /* bx lr */ },
-    /* The game already has a build without the online parts of these
-     * screens: Market/Amazon (internalSettings.xml, byte +3 of the Market
-     * settings, getter 0x4a67b4b0). Flipping that flag would also switch
-     * billing and logins, so only these screens' own checks answer "yes":
-     *   settings: music, sound and credits only, as on Amazon (no Support,
-     *     Google Play, Facebook or Game Center; the Facebook row in Advanced
-     *     goes too). The two checks that pick the bottom buttons
-     *     (0x4a3e2618, 0x4a3dfdac: mask 3 = Advanced and Back, Amazon 2 =
-     *     Back only) are left alone, so Advanced stays.
-     *   top bar: no "+" (to the real-money tab), and the bar sized without it.
-     *   shop: no "Free" tab (videos, offer walls), its page and its badge. */
-    { "settings as Amazon", 0x4a3dba14, 0xeb0a7ea5 /* bl 0x4a67b4b0 */, 0xe3a00001 /* mov r0, #1 */ },
-    { "settings as Amazon", 0x4a3dd3b4, 0xeb0a783d, 0xe3a00001 },
-    { "settings as Amazon", 0x4a3df3fc, 0xeb0a702b, 0xe3a00001 },
-    { "settings as Amazon", 0x4a3e1dcc, 0xeb0a65b7, 0xe3a00001 },
-    { "settings as Amazon", 0x4a3e1ff4, 0xeb0a652d, 0xe3a00001 },
-    { "settings as Amazon", 0x4a3e230c, 0xeb0a6467, 0xe3a00001 },
-    { "settings as Amazon", 0x4a3e2384, 0xeb0a6449, 0xe3a00001 },
-    { "top bar without +", 0x4a5042d0, 0xeb05dc76, 0xe3a00001 },
-    { "top bar without +", 0x4a5044a0, 0xeb05dc02, 0xe3a00001 },
-    { "shop without Free", 0x4a653838, 0xeb009f1c, 0xe3a00001 },
-    { "shop without Free", 0x4a654bf0, 0xeb009a2e, 0xe3a00001 },
-    { "shop without Free", 0x4a65d728, 0xeb007760, 0xe3a00001 },
-    /* The map's raid toggle (and its arrow, 0x4a4c98fc) shows when the
-     * profile's RaidToggleIsVisible (+0x28c, getter 0x4a285ac4) is set,
-     * which the raid intro does. Raids need Nekki's servers. */
-    { "no raid toggle", 0x4a285ac4, 0xe5d0028c /* ldrb r0, [r0, #0x28c] */, 0xe3a00000 /* mov r0, #0 */ },
 };
 
 /* cheats (controls.txt "cheats = 1", the default).

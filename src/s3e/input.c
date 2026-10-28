@@ -76,7 +76,7 @@ static int s_dash_dir;          /* -1 left, 1 right, 0 none */
 static uint64_t s_dash_start;
 static int s_touch_controls;   /* draw the on-screen fight controls */
 static int s_cheats = 1;       /* cheats panel and unlimited energy (patches.c) */
-static int s_remove_online = 1; /* hide offers, ads and online prompts (quests.c) */
+static int s_remove_online = 1; /* no online pop-ups (quests.c) */
 
 static void ensure_controls(void);
 
@@ -121,8 +121,8 @@ static void save_controls(void)
                "# 1 turns the cheats on at the next launch: unlimited energy, and a\n"
                "# button in the shop to a panel with coins, gems and a progress reset.\n"
                "cheats = %d\n"
-               "# 1 removes what needs the internet at the next launch: offers, ads,\n"
-               "# Facebook, rating and news prompts, raid invitations.\n"
+               "# 1 stops the pop-ups that need the internet (from the next launch):\n"
+               "# offers, ads, Facebook, rate us, news, raid invitations.\n"
                "remove_online = %d\n"
                "# joystick = centre x, centre y, drag radius, stick deadzone (0-127)\n"
                "joystick = %d %d %d %d\n",

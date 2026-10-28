@@ -1,17 +1,12 @@
 # Later
 
-## Remove what only works online (done; see quests.c and patches.c)
+## Remove what only works online (done, pop-ups only; see quests.c)
 
-Done: offer, ad, Facebook, rating, news, Tapjoy and raid-recruiting quests
-off; energy dialog without "GET FREE"; settings as on Amazon; no top-bar
-"+", no shop "Free" tab, no map raid toggle. controls.txt remove_online.
-
-Left on purpose:
-- The shop's "Payment" tab (real-money gems and coins). Every store build
-  has it, so there is no tested variant without it, and quests open it.
-- The pack download quests (packs are installed, so they never fire), the
-  GDPR consent and the version check (never fire offline), and quests that
-  need a real purchase or a raid to have happened.
+Only the messages that open by themselves are gone: offers, ads, Facebook
+and share prompts, rate us, news, raid invitations. Buttons and screens
+were tried hidden too (Amazon variants of settings, top bar and shop, no
+raid toggle; RE_NOTES "Store variants") and taken back out at the user's
+request: pressing an online button shows the game's "no connection".
 
 ## Ideas for the controls (not started)
 

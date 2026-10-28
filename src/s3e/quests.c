@@ -1,14 +1,14 @@
 /* Offline cleanup of the game's quest scripts.
  *
- * Offers, ads, ratings, Facebook, news and the raids' recruiting are not
- * game code but quests: XML in assets/quests.xml and the files it attaches
+ * The pop-ups for offers, ads, ratings, Facebook, news and the raids'
+ * recruiting are not game code but quests: XML in assets/quests.xml and the files it attaches
  * from assets/quest_extensions/ (docs/RE_NOTES.md, "Quest scripts"). Each
  * file is edited as the game reads it, by the table below:
  *
  *   Q_OFF  the quest gets a condition that never holds. Its name stays, so
  *          saved progress, ClearQuestQueue and resumes still find it.
  *   Q_CUT  removes the elements of one quest that start with the given
- *          text (count must match exactly), e.g. one button of a dialog.
+ *          text (count must match exactly), e.g. one dialog of several.
  *
  * Every edit checks what it changes, like the code patches: a quest that
  * is missing, or a cut whose count differs, is logged and skipped. Edits
@@ -48,60 +48,35 @@ typedef struct {
 #define OFF(f, q)  { f, q, Q_OFF, NULL, 0 }
 #define CUT(f, q, s, n) { f, q, Q_CUT, s, n }
 
+/* Only messages that pop up on their own. Whatever answers a button the
+ * player presses (Facebook login, "GET FREE", an offer's map button...) is
+ * left as it was, so pressing it shows the game's own "no connection". */
 static const q_edit s_edits[] = {
-    /* Facebook: login, like and share prompts, and the gems for them. */
-    OFF(QUESTS, "FBLikeCheck"), OFF(QUESTS, "FBLikePress"), OFF(QUESTS, "FBSetIndicator"),
-    OFF(QUESTS, "FBReward"), OFF(QUESTS, "FBFirstTimeOffer"), OFF(QUESTS, "FBFirstTimeSettingsReminder"),
-    OFF(QUESTS, "FBFirstTimeShareReminder"), OFF(QUESTS, "FBShare"), OFF(QUESTS, "FacebookCommonLogin"),
-    OFF(QUESTS, "FacebookCommonLogout"),
-    /* The level-up dialog's "Share with friends" box (the game's Amazon
-     * variant, LevelUpAmazon, is the same dialog without it). */
-    CUT(QUESTS, "LevelUp", "<CheckBox Text=\"dlgShareCheckbox\"", 1),
-    /* Ads: video ads, rewarded videos, MoPub, the in-house "buy anything to
-     * remove ads" one, and their no-network dialogs. */
-    OFF(QUESTS, "ShowAdVideo"), OFF(QUESTS, "ShowAdVideoNoNetwork"), OFF(QUESTS, "RewardedMapVideo"),
-    OFF(QUESTS, "ShowRewardedVideoNoNetwork"), OFF(QUESTS, "RollMoPubAd"), OFF(QUESTS, "ShowAd"),
-    OFF(QUESTS, "ShowOurAd"),
-    /* The energy refill dialog's "GET FREE" (a video ad); buying with gems
-     * stays, as in the game's EnergyRefillAmazon. */
-    CUT(QUESTS, "EnergyRefill", "<Button Type=\"Middle\" Color=\"Green\" Text=\"dlgGetFreeBtn\"", 1),
-    /* "Rate us" (store page), news, Tapjoy tracking, and the reminders that
-     * send you to the free-gems tab (videos and offer walls). */
+    /* Facebook: "log in for 5 gems" after fights, and the share prompt
+     * after a level up. */
+    OFF(QUESTS, "FBFirstTimeOffer"), OFF(QUESTS, "FBFirstTimeShareReminder"), OFF(QUESTS, "FBShare"),
+    /* Ads after fights (MoPub, and the in-house "buy anything to remove
+     * ads"), "rate us", news, and the reminders about the free-gems tab. */
+    OFF(QUESTS, "RollMoPubAd"), OFF(QUESTS, "ShowAd"), OFF(QUESTS, "ShowOurAd"),
     OFF(QUESTS, "RatingOfferChina"), OFF(QUESTS, "RatingOffer"), OFF(QUESTS, "ShowNews"),
-    OFF(QUESTS, "TapjoyOnTutorialCompletionAndroid"), OFF(QUESTS, "TapjoyOnTutorialCompletionIOS"),
-    OFF(QUESTS, "TapjoyOnThirdLevelAndroid"), OFF(QUESTS, "TapjoyOnThirdLevelIOS"),
     OFF(QUESTS, "FreeReminderOnTabLeave"), OFF(QUESTS, "FreeReminder"),
-    /* Real-money offers: the starter pack, "buy coins" reminders. The
-     * Bought/Dismiss quests stay; they only follow a purchase or a timer. */
-    OFF(QUESTS, "StarterPackLaunch"), OFF(QUESTS, "StarterPackPress"), OFF(QUESTS, "StarterPackDialog"),
-    OFF(QUESTS, "StarterPackDialogNoSurprise"), OFF(QUESTS, "StarterPackOnRestart"),
+    /* Real-money offers that open by themselves: the starter pack after a
+     * tournament and at start-up, "buy coins" in Survival, "new currency
+     * pack". Their map buttons, if any, still work. */
+    OFF(QUESTS, "StarterPackLaunch"), OFF(QUESTS, "StarterPackOnRestart"),
     OFF(QUESTS, "SurvivalPayReminder"), OFF(QUESTS, "currency_alert"),
-    /* The offers' map buttons were only hidden when their timer ran out:
-     * now always, so one left from before goes away. */
-    CUT(QUESTS, "promo_MapButtonRemover_FirstPayment",
-        "<Greater Not=\"1\" Value1=\"?Timer(Timer_FirstPayment).Value\"", 1),
-    CUT(QUESTS, "promo_MapButtonRemover_RepeatPayment",
-        "<Greater Not=\"1\" Value1=\"?Timer(Timer_RepeatPayment).Value\"", 1),
-    CUT(QUESTS, "promo_MapButtonRemover_IncreasePayment",
-        "<Greater Not=\"1\" Value1=\"?Timer(Timer_IncreasePayment).Value\"", 1),
-    CUT(QUESTS, "promo_MapButtonRemover_StarterPack",
-        "<Greater Not=\"1\" Value1=\"?Timer(Timer_StarterPack).Value\"", 1),
 
-    /* Real-money "special offers": first, repeat and increased payment. */
-    OFF(PROMOS, "promo_FirstPayment_OnFightEnter"), OFF(PROMOS, "promo_FirstPayment_OnPress"),
-    OFF(PROMOS, "promo_FirstPayment_OnRestart"), OFF(PROMOS, "promo_RepeatPayment_SessionStart_Gold"),
-    OFF(PROMOS, "promo_RepeatPayment_SessionStart_Ruby"), OFF(PROMOS, "promo_RepeatPayment_Press"),
-    OFF(PROMOS, "promo_RepeatPayment_OnRestart"), OFF(PROMOS, "RepeatPaymentDialogGold"),
-    OFF(PROMOS, "RepeatPaymentDialogRuby"), OFF(PROMOS, "promo_IncreasePayment_OnPurchase"),
-    OFF(PROMOS, "promo_IncreasePayment_Bonus_Launch"), OFF(PROMOS, "promo_IncreasePayment_Gold_Launch"),
-    OFF(PROMOS, "promo_IncreasePayment_OnPress"), OFF(PROMOS, "promo_IncreasePayment_OnRestart"),
-    OFF(PROMOS, "promo_IncreasePayment_Offer_Gold"), OFF(PROMOS, "promo_IncreasePayment_Offer_Ruby"),
+    /* Real-money "special offers" that open by themselves (fight start,
+     * session start, restart, buying gems). */
+    OFF(PROMOS, "promo_FirstPayment_OnFightEnter"), OFF(PROMOS, "promo_FirstPayment_OnRestart"),
+    OFF(PROMOS, "promo_RepeatPayment_SessionStart_Gold"), OFF(PROMOS, "promo_RepeatPayment_SessionStart_Ruby"),
+    OFF(PROMOS, "promo_RepeatPayment_OnRestart"), OFF(PROMOS, "promo_IncreasePayment_OnPurchase"),
+    OFF(PROMOS, "promo_IncreasePayment_OnRestart"),
 
     /* Raids (online multiplayer): the intro after Lynx, the raid shop
-     * notice, and "join the raids" every ten fights. Quests that need a
-     * raid to have been entered cannot fire and are left alone. */
-    OFF(RAIDS, "RaidTutorialLauncherFightEnd"), OFF(RAIDS, "ShowRaidButtonTutorial"),
-    OFF(RAIDS, "RaidShopNotification"), OFF(RAIDS, "GoToRaidsNotify"), OFF(RAIDS, "GoToRaidsDialog"),
+     * notice, and "join the raids" every ten fights. */
+    OFF(RAIDS, "RaidTutorialLauncherFightEnd"), OFF(RAIDS, "RaidShopNotification"),
+    OFF(RAIDS, "GoToRaidsDialog"),
     /* The puppeteer's "join the raid forces" after an Ascension loss. */
     OFF(ZONE2, "Zone2LossTutor"),
     /* After Titan: the ending, credits, sphere and May's line stay; the
