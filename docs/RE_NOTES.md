@@ -372,3 +372,18 @@ glGetError after the call and logs the first failures by name).
 - Harmless at boot: glEnable(GL_LIGHTING), glDisable(0x809e/0x80a0
   multisample), glPixelStorei(GL_PACK/UNPACK_ALIGNMENT),
   glHint(GL_GENERATE_MIPMAP_HINT).
+
+## Pre-fight screens (VsScreen, EnemiesScreen)
+
+- Fight "Stage Open" (0x4a40c1a8) calls 0x4a3fe67c: with bodyguards
+  (two or more opponents) it builds EnemiesScreen (0x4a404a50, vtable
+  0x4a8ce4b0) and shows it for 276 frames (0x4a404bb0; halved when the
+  byte from 0x4a6ae140 is set); otherwise VsScreen (0x4a40536c, vtable
+  0x4a8ce770) for 204 frames (0x4a40567c). The frame count sits at
+  module+0x128 (0x4a199330).
+- EnemiesScreen: one card per opponent (0x4a24c364, portrait
+  image/users/image/<name>.png; 0x4a24cddc marks a beaten one) in a
+  container (+0x12c), scrolled by Sequence(Delay 0.1, MoveTo 2.0 to +0x13c,
+  Delay 0.5, CallFunc, Delay 2.0). Neither screen overrides draw or
+  update: the scroll is plain cocos2d, so a choppy scroll means slow
+  frames, not a broken animation.
