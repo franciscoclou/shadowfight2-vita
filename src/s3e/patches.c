@@ -60,6 +60,7 @@ void sf_apply_patches(const sf_s3e_module *mod)
     sf_game_init(mod);
     apply(mod, s_always, sizeof(s_always) / sizeof(s_always[0]));
     sf_ui_install(mod);
+    sf_packs_install_unlocks();
     if (sf_option_cheats()) {
         apply(mod, s_cheats, sizeof(s_cheats) / sizeof(s_cheats[0]));
         sf_cheats_install(mod);

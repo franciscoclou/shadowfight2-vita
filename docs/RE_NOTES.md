@@ -237,6 +237,24 @@ manager+0xb90, manager 0x4a266ed4, lookup 0x4a25e490).
   1-pixel-inset whole-texture rectangle (u,v 1/128..127/128), drawing the
   whole atlas in every piece. Images were unaffected (read to EOF).
 
+## Shop items of each act (PackLabel)
+
+- Items carry PackLabel="ZONE_<n>" (list.xml). The shop list (0x4a6583d0)
+  shows an item only if the label is empty or 0x4a2854b0(profile, label)
+  finds it in the profile's labels (+0x1fc, users.xml <Shop><Lock
+  Name/>; lookup 0x4a285414). <ToggleItems Label Toggle="on"/> adds one
+  through 0x4a28bcf4(profile, &label, 1); "off" uses 0x4a28fa68.
+- The quests toggle ZONE_<n> on only in the <Success> of the pack's
+  in-game <Download>, offered after the act's gate fight and only while
+  ?PackAssert(ZONE_<n>).Availability is not 1. Offline-installed packs
+  are never downloaded, so packs.c replaces 0x4a2854b0 and grants each
+  act whose gate fight is won first.
+- Fights: 0x4a27a498(&id string) -> fight; 0x4a2a0f00(fight) -> the
+  player's record or NULL; WinCount is record+4 (0x4a31041c). That is
+  QuestCondition::fightFunction (0x4a302ff8), ?Fight(ID).Property.
+- The shop's "Defeat Lynx to unlock ranged weapons" (shopRangedLocked,
+  0x4a65c084) is shown whenever the ranged list is empty.
+
 ## Crash notification
 
 Quest CrashNotification (quests.xml) fires at SessionStart when

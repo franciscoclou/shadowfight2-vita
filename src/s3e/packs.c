@@ -21,7 +21,7 @@
  * "pack check" (patches.c) makes it compare the path instead, so Hash holds
  * "<Name>.dz".
  */
-#include "s3e/s3e_internal.h"
+#include "s3e/game.h"
 #include "platform/platform.h"
 
 #include <stdio.h>
@@ -213,4 +213,79 @@ void sf_packs_register(void)
         LOGI("packs: %u installed, packs.xml written", found);
     else
         LOGE("packs: cannot write %s", path);
+}
+
+/* --- the shop items a download would have unlocked -------------------------
+ *
+ * Each act's regular shop items carry PackLabel="ZONE_<n>", and the shop
+ * lists an item only if its label is in the player's unlocked labels
+ * (users.xml <Shop><Lock Name/>, profile +0x1fc; check 0x4a2854b0, shop
+ * filter 0x4a6583d0). The quests add the label with <ToggleItems
+ * Label="ZONE_<n>" Toggle="on"/> only in the <Success> of the in-game
+ * pack download, offered once the act's gate fight is won and the pack is
+ * missing. Installed offline, a pack is never missing, so it is never
+ * downloaded and its items never appeared ("Defeat Lynx to unlock ranged
+ * weapons" after Lynx).
+ *
+ * The check is replaced: before answering as the original does, it grants
+ * every act whose gate fight has been won, through the same call
+ * ToggleItems makes (0x4a28bcf4). Gates are the download quests' own.
+ */
+static const struct { const char *label, *fight; } s_unlocks[] = {
+    { "ZONE_IM",  "ZONE_1|BOSS_LYNX|6" },   /* the quest: the Lynx intermission is available */
+    { "ZONE_2",   "ZONE_1|BOSS_LYNX|6" },
+    { "ZONE_3",   "ZONE_2|BOSS_HERMIT|6" },
+    { "ZONE_4",   "ZONE_3|BOSS_BUTCHER|6" },
+    { "ZONE_5",   "ZONE_4|BOSS_WASP|6" },
+    { "ZONE_6",   "ZONE_5|BOSS_HUNTRESS|6" },
+    { "ZONE_7",   "ZONE_6|BOSS_SAMURAI_INTERMISSION|1" },
+    { "ZONE_7_2", "ZONE_6|BOSS_SAMURAI_INTERMISSION|1" },   /* the quest: a zone 7 variable */
+    { "ZONE_7_3", "ZONE_7|MINIBOSS_SHROUD2|1" },
+};
+
+typedef int   (*label_index_fn)(void *profile, gstring *label);         /* 0x4a285414 */
+typedef void *(*fight_fn)(gstring *id);                                 /* 0x4a27a498 */
+typedef void *(*fight_record_fn)(void *fight);                          /* 0x4a2a0f00 */
+typedef int   (*toggle_on_fn)(void *profile, gstring *label, int on);   /* 0x4a28bcf4 */
+
+static int fight_won(const char *id)
+{
+    gstring s;
+    void *fight, *rec;
+    sf_gstring(&s, id);
+    fight = ((fight_fn)G(0x4a27a498))(&s);
+    sf_gstring_free(&s);
+    rec = fight ? ((fight_record_fn)G(0x4a2a0f00))(fight) : NULL;
+    return rec && *(int32_t *)((uint8_t *)rec + 4) > 0;   /* WinCount (0x4a31041c) */
+}
+
+static void grant_won_acts(void *profile)
+{
+    static int busy;
+    size_t i;
+    if (busy)
+        return;
+    busy = 1;
+    for (i = 0; i < sizeof(s_unlocks) / sizeof(s_unlocks[0]); i++) {
+        gstring label;
+        sf_gstring(&label, s_unlocks[i].label);
+        if (((label_index_fn)G(0x4a285414))(profile, &label) < 0 && fight_won(s_unlocks[i].fight)) {
+            ((toggle_on_fn)G(0x4a28bcf4))(profile, &label, 1);
+            LOGI("packs: %s shop items unlocked (%s won)", s_unlocks[i].label, s_unlocks[i].fight);
+        }
+        sf_gstring_free(&label);
+    }
+    busy = 0;
+}
+
+/* Replaces 0x4a2854b0: is this label unlocked for the profile? */
+static int label_unlocked(void *profile, gstring *label)
+{
+    grant_won_acts(profile);
+    return ((label_index_fn)G(0x4a285414))(profile, label) >= 0;
+}
+
+void sf_packs_install_unlocks(void)
+{
+    sf_game_hook("pack labels", 0x4a2854b0, 0xe92d4008, 0xebffffd6, (void *)label_unlocked);
 }

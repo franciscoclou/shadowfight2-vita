@@ -64,7 +64,8 @@ void sf_ui_frame(void);  /* once per presented frame */
 const uint8_t *sf_ui_asset(const char *path, uint32_t *size);
 
 /* --- packs.c --- */
-void sf_packs_register(void);   /* before the entry point: list the packs in packs.xml */
+void sf_packs_register(void);
+void sf_packs_install_unlocks(void);   /* after sf_game_init */   /* before the entry point: list the packs in packs.xml */
 
 /* --- hud.c --- */
 void sf_hud_file_opened(const char *name);
