@@ -99,7 +99,6 @@ typedef struct sf_file {
     uint32_t mem_size, mem_pos;
     int eof;
     int writing;
-    char *name;               /* user fs files: for the short-read log */
 } sf_file;
 
 /* --- paths ------------------------------------------------------------- */
@@ -204,19 +203,24 @@ static sf_file *sf_s3eFileOpen_(const char *name, const char *mode)
             return f;
         }
     }
-    /* User filesystems first, read-only opens only (Derbh is read-only). */
+    /* User filesystems first, read-only opens only (Derbh is read-only).
+     * They get the mode as "rb": Derbh accepts exactly "r" or "rb"
+     * (0x4a753158), and cocos2d's plist parser opens with "rt" (its
+     * CCSAXParser::parse, 0x4a05da7c). Passed as is, every .plist inside a
+     * content pack fell through to the disk and was missing: the zone 2+
+     * arenas found none of their atlas frames and drew each piece with
+     * the whole atlas. Marmalade hands user filesystems a plain mode too. */
     if (!is_writable_mode(mode)) {
         for (i = s_nuserfs - 1; i >= 0; i--) {
             void *h;
             ufs_lock();
-            h = s_userfs[i].open(name, mode);
+            h = s_userfs[i].open(name, "rb");
             ufs_unlock();
             if (h) {
                 f = calloc(1, sizeof(*f));
                 f->kind = 2;
                 f->ufs = &s_userfs[i];
                 f->uh = h;
-                f->name = strdup(name);
                 LOGV("s3eFileOpen(%s) -> userfs %d", name, i);
                 return f;
             }
@@ -289,7 +293,6 @@ static int32_t sf_s3eFileClose(sf_file *f)
         ufs_lock();
         f->ufs->close(f->uh);
         ufs_unlock();
-        free(f->name);
     }
     free(f);
     return S3E_RESULT_SUCCESS;
@@ -362,12 +365,6 @@ static uint32_t sf_s3eFileRead(void *buf, uint32_t size, uint32_t count, sf_file
         ufs_lock();
         n = f->ufs->read(buf, size, count, f->uh);
         ufs_unlock();
-        if (n < count && size * count > 1) {
-            static int logged;
-            if (logged++ < 40)
-                LOGW("short read from pack: %s, %u x %u -> %u (main thread %d)", f->name ? f->name : "?",
-                     (unsigned)size, (unsigned)count, (unsigned)n, sf_thread_is_main());
-        }
         return n;
     default: {
         uint32_t avail = (f->mem_size - f->mem_pos) / size;
@@ -683,7 +680,7 @@ static int32_t sf_s3eFileListClose(sf_list *l)
  * buffer, for shims that take a file name, like s3eAudioPlay. */
 void *sf_file_load(const char *name, uint32_t *size)
 {
-    sf_file *f = sf_s3eFileOpen(name, "rb");
+    sf_file *f = sf_s3eFileOpen(name, "rt");   /* as CCSAXParser opens */
     int32_t n;
     void *buf = NULL;
 
@@ -705,7 +702,7 @@ void *sf_file_load(const char *name, uint32_t *size)
  * cocos2d's getFileData uses (0x4a05e650): open, size, one whole read. */
 void sf_file_selftest(const char *name)
 {
-    sf_file *f = sf_s3eFileOpen(name, "rb");
+    sf_file *f = sf_s3eFileOpen(name, "rt");   /* as CCSAXParser opens */
     int32_t size, got;
     uint8_t *buf;
     if (!f) {

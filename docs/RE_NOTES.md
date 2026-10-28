@@ -220,6 +220,15 @@ manager+0xb90, manager 0x4a266ed4, lookup 0x4a25e490).
   names ('\'-separated), then per file a u16 dir index (0 = root) and chunk
   ids up to 0xffff. Every pack carries its own settings.xml.
 
+- **User filesystems get "rb".** Derbh's archive open (0x4a753158) takes
+  exactly "r" or "rb"; cocos2d's CCSAXParser::parse (0x4a05da7c) opens
+  plists through getFileData (0x4a05e650: open, s3eFileGetSize, one
+  whole read) with "rt". Passed through unchanged, every pack .plist fell
+  back to the disk and was missing: the zone 2+ arenas found none of
+  their atlas frames and each piece fell back to a whole-texture rect
+  (u,v 1/128..127/128, the no-image sprite's), drawing the whole atlas
+  in every piece. file.c hands user filesystems "rb" for any read-only
+  open. (Act 1's plists are plain files on disk, where "rt" works.)
 - **s3eFileGetFileInt must see the packs.** The game sizes a file with
   s3eFileGetFileInt(path, 4) before reading it whole (cocos2d's plist
   loader does). Files inside the .dz packs exist only in Derbh, so a
