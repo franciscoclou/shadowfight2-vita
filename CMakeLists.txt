@@ -56,6 +56,12 @@ file(GLOB_RECURSE SF_SOURCES
 
 add_executable(${PROJECT_NAME} ${SF_SOURCES})
 
+# ui_assets.S .incbin's the PNGs; CMake's dependency scan does not see
+# them, so an edited image would otherwise keep shipping the old one.
+file(GLOB SF_UI_ASSETS ${CMAKE_SOURCE_DIR}/src/assets/*.png)
+set_source_files_properties(${CMAKE_SOURCE_DIR}/src/s3e/ui_assets.S
+  PROPERTIES OBJECT_DEPENDS "${SF_UI_ASSETS}")
+
 # vitaGL ships a C++ shader translator, so the final link must go through
 # the C++ driver even though the loader is C.
 set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
