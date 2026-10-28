@@ -31,7 +31,7 @@ fi
 
 docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp "${SAVE_ARGS[@]}" \
   -e SF_MAX_FRAMES="${SF_MAX_FRAMES:-300}" -e SF_SHOT_EVERY="${SF_SHOT_EVERY:-30}" \
-  -e SF_TAPS="${SF_TAPS:-}" -e SF_UI_TEST="${SF_UI_TEST:-0}" -e SF_FILE_TEST="${SF_FILE_TEST:-}" -e SF_QUESTS_TEST="${SF_QUESTS_TEST:-}" -e SF_LOAD_ADDR="${SF_LOAD_ADDR:-0x98000000}" -e SF_PROFILE="${SF_PROFILE:-0}" -e SF_OUT=/src/tests/harness/out \
+  -e SF_TAPS="${SF_TAPS:-}" -e SF_UI_TEST="${SF_UI_TEST:-0}" -e SF_FILE_TEST="${SF_FILE_TEST:-}" -e SF_QUESTS_TEST="${SF_QUESTS_TEST:-}" -e SF_DIALOG_TEST="${SF_DIALOG_TEST:-}" -e SF_LOAD_ADDR="${SF_LOAD_ADDR:-0x98000000}" -e SF_PROFILE="${SF_PROFILE:-0}" -e SF_OUT=/src/tests/harness/out \
   -e EGL_PLATFORM=surfaceless -e LIBGL_ALWAYS_SOFTWARE=1 -e GALLIUM_DRIVER="${GALLIUM_DRIVER:-softpipe}" \
   -v "$REPO_ROOT:/src" -w /src/tests/harness "$IMAGE" bash -c '
     set -e

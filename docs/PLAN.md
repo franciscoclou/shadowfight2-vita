@@ -1,23 +1,17 @@
 # Later
 
-## Remove what only works online
+## Remove what only works online (done; see quests.c and patches.c)
 
-Hide everything the port can never do (no network, no store), keeping the
-story and anything playable offline. Only where it cannot break progress.
+Done: offer, ad, Facebook, rating, news, Tapjoy and raid-recruiting quests
+off; energy dialog without "GET FREE"; settings as on Amazon; no top-bar
+"+", no shop "Free" tab, no map raid toggle. controls.txt remove_online.
 
-- **Offers and prompts** are quests in `quests.xml` (539 of them):
-  `StarterPack*`, `promo_*`, `PROMO_XMAS14_*`, `RatingOffer*`,
-  `ShowAdVideo*`, `RewardedMapVideo`, `ShowRewardedVideoNoNetwork`,
-  `Tapjoy*`, `FBFirstTimeOffer`, `SurvivalPayReminder`, the May "special
-  offer" reminders, the arena/volcano unlock messages.
-  Approach: drop them as the game reads `quests.xml` (file.c), and accept
-  that file in the save-hash check (0x4a1f849c), or rewrite its .hash
-  the way packs.c does. Check each removed quest is not a prerequisite of
-  a story quest first.
-- **Buttons**: the gem shop "+" in the top bar, the arena toggle, the
-  Shadow Fight 3 toggle in the dojo. Each needs its builder found and the
-  button hidden (setVisible, vtable 0x90) after it is made.
-- Keep: story banners and everything reachable offline.
+Left on purpose:
+- The shop's "Payment" tab (real-money gems and coins). Every store build
+  has it, so there is no tested variant without it, and quests open it.
+- The pack download quests (packs are installed, so they never fire), the
+  GDPR consent and the version check (never fire offline), and quests that
+  need a real purchase or a raid to have happened.
 
 ## Ideas for the controls (not started)
 

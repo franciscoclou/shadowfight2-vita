@@ -413,3 +413,32 @@ glGetError after the call and logs the first failures by name).
   log calls (0x4a1d5570) print nothing in this build.
 - src/s3e/quests.c edits these files as they are read; the list and the
   reasons are in its table.
+
+## Store variants (internalSettings.xml <Market>)
+
+- Read by 0x4a67ac9c into the Market settings at 0x4a90bd90 (singleton
+  0x4a67abe0): +0 China, +1 Japan, +2 Korea, +3 Amazon, +4 AmazonMobile,
+  +5 Steam, +6 AndroidTV, +7 WinStore; byte getters 0x4a67b498 + n*8.
+  The other AssemblySettings (0x4a67ae5c) land at 0x4a90bd84: +0
+  CacheTexturesLog, +1 ShowPVP, +2 SkipContentDownload, +3 SkipPayment,
+  +5 ShowSensitiveArea; ShowIntro/ShowController/BigButtons at 0x4a8f4070.
+- Amazon (25 callers of 0x4a67b4b0) picks the billing provider
+  (0x4a25dc3c: 0 Google, 6 China, 7 Amazon), services at boot, and the
+  online-free variants of three screens:
+  - Settings (0x4a3e24bc, factory type 14, shown by 0x4a51e374(14, 0)):
+    0x4a3e03f8 builds music/sound/credits; Android's 0x4a3e0d80 adds
+    support, Google Play, Facebook, Game Center. Row labels 0x4a3df3f0,
+    bottom 0x4a3e1fe4, sizes 0x4a3dba04, Advanced Facebook row 0x4a3dd38c.
+  - Top bar (0x4a504918 builds the AddMoney "+" at +0x150): layout
+    0x4a504348 hides it on Amazon, 0x4a504274 sizes the bar.
+  - Shop (0x4a65ab24 tabs): tab 7 "Free" only when 0x4a654be8 (not Amazon,
+    not WinStore); its page 0x4a653744, badges 0x4a65d4e8. Tab 6 "Payment"
+    is the real-money gems and coins, on every store.
+  patches.c answers "Amazon" at those screens' call sites only.
+- Raid toggle on the map: 0x4a4c9980 / 0x4a4c9b0c / 0x4a4c98fc show it from
+  the profile's RaidToggleIsVisible (+0x28c, getter 0x4a285ac4, setter
+  0x4a285acc).
+- Dojo SF3 button (0x4a5098e0, built hidden by 0x4a4fb63c): shown only once
+  its icon is downloaded, so never offline.
+- The game's dialog factory: 0x4a51e374(type, arg) builds (0x4a51c1b0) and
+  shows; 14 settings, 4 quit.
