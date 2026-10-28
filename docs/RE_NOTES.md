@@ -252,6 +252,11 @@ manager+0xb90, manager 0x4a266ed4, lookup 0x4a25e490).
 - Fights: 0x4a27a498(&id string) -> fight; 0x4a2a0f00(fight) -> the
   player's record or NULL; WinCount is record+4 (0x4a31041c). That is
   QuestCondition::fightFunction (0x4a302ff8), ?Fight(ID).Property.
+- Item levels by label: none 1-6, ZONE_2 7-12 ... ZONE_6 31-36, ZONE_IM
+  (the Interlude, after ZONE_6|FINAL_BATTLE|1 starts it) 38-43, ZONE_7
+  44-46, ZONE_7_2 47-49 (after Shroud's ambush on entering
+  ZONE_7|CLIFFHANGER_STONE_FOREST|1), ZONE_7_3 50-52. 0x4a28fa68(profile,
+  &label) is ToggleItems "off".
 - The shop's "Defeat Lynx to unlock ranged weapons" (shopRangedLocked,
   0x4a65c084) is shown whenever the ranged list is empty.
 
