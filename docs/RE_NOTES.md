@@ -306,6 +306,23 @@ crash, so s3eDeviceGetInt reports 640 MB (RAM + CDRAM).
   of the anchor. Music/sound/GDPR rows use slots +0x264/+0x260/+0x268.
 - ui.c forces Large and turns the row into "Controls".
 
+## Fight button panel (0x4a417cfc)
+
+- Builds the attack buttons as children of the panel, each through
+  0x4a417a30(panel, &slot, ..., normal png, action png, action id):
+  kick +0x128 (id 0xd), punch +0x12c (0xe), ranged/throw +0x130 (0xf),
+  magic +0x134 (0x10), charge +0x138 (0x11, 0x4a417b88, three images).
+  0x4a418e50 maps the ids to fight actions 0, 1, 2, 3, 5.
+- Panel coordinates (y up, button centres): kick (-140, h/2), punch
+  (-w/2, 140), w = h = 103 (btn_*_normal sourceSize).
+- Byte 0x4a8f4071 (getter 0x4a67ab54) is internalSettings.xml
+  `ShowController` (read in 0x4a67ae5c), 1 in the shipped file. When set,
+  ranged = kick + (-35, 117), magic = punch + (-35, 117) (floats at
+  0x4a417a28/0x4a417a2c); when clear they sit on kick and punch.
+- On the Vita (960x544, Large) the panel scale is 0.935 (1.32 x 544/768)
+  and its origin (930.9, 515.2) in screen points: kick (800,467), punch
+  (883,385), ranged (767,358), magic (850,275).
+
 ## Pause dialog (PauseFightDialog)
 
 - Constructor 0x4a3901d0, vtable 0x4a8c4330; slot 0x26c (0x4a390c60)

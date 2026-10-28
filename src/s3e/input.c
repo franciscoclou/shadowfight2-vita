@@ -47,20 +47,22 @@ static int find_touch(const sf_input *in, int id)
 /* --- virtual touches ------------------------------------------------------ */
 
 #define VPAD_ID 200
-#define CONTROLS_VERSION 4
+#define CONTROLS_VERSION 5
 #define CONTROLS_COMPATIBLE 2   /* older files had punch and kick swapped */
+#define CONTROLS_RANGED_FIXED 5 /* older files had guessed ranged and magic */
 
 /* Cross kicks, circle punches, square throws the ranged weapon, triangle
  * casts magic. punch, kick and the joystick are measured from the tutorial
  * dojo's HUD on the harness, at the Large controller scale that patches.c
- * forces; ranged, magic and pause are estimates (those controls only
- * appear later). */
+ * forces. ranged and magic follow from the game's layout (0x4a417cfc, see
+ * docs/RE_NOTES.md): 35 left and 117 up from kick and punch, in panel
+ * units of 0.935 screen points. pause is an estimate. */
 enum { V_PUNCH, V_KICK, V_RANGED, V_MAGIC, V_PAUSE, V_NBUTTONS };
 static struct { const char *name; uint32_t btn; int x, y; } s_vbtn[V_NBUTTONS] = {
     { "punch",  SF_BTN_CIRCLE,   883, 385 },
     { "kick",   SF_BTN_CROSS,    800, 467 },
-    { "ranged", SF_BTN_SQUARE,   905, 280 },
-    { "magic",  SF_BTN_TRIANGLE, 790, 300 },
+    { "ranged", SF_BTN_SQUARE,   767, 358 },
+    { "magic",  SF_BTN_TRIANGLE, 850, 275 },
     { "pause",  SF_BTN_START,    480,  40 },
 };
 static int s_joy_x = 137, s_joy_y = 405, s_joy_r = 65, s_deadzone = 40;
@@ -163,7 +165,8 @@ static void load_controls(void)
         }
         if (sscanf(line, " %31[a-z_] = %d %d", name, &x, &y) == 3)
             for (i = 0; i < V_NBUTTONS; i++)
-                if (!strcmp(name, s_vbtn[i].name)) {
+                if (!strcmp(name, s_vbtn[i].name) &&
+                    !(version < CONTROLS_RANGED_FIXED && (i == V_RANGED || i == V_MAGIC))) {
                     s_vbtn[i].x = x;
                     s_vbtn[i].y = y;
                 }
