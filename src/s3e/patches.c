@@ -71,6 +71,7 @@ void sf_apply_patches(const sf_s3e_module *mod)
     apply(mod, s_always, sizeof(s_always) / sizeof(s_always[0]));
     sf_ui_install(mod);
     sf_packs_install_unlocks();
+    sf_prof_install();
     if (sf_option_remove_online())
         apply(mod, s_remove_online, sizeof(s_remove_online) / sizeof(s_remove_online[0]));
     if (sf_option_cheats()) {

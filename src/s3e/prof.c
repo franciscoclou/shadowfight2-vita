@@ -8,6 +8,7 @@
  * atomics.
  */
 #include "s3e/s3e_internal.h"
+#include "s3e/game.h"
 #include "platform/platform.h"
 
 #include <stdio.h>
@@ -18,7 +19,7 @@
 
 static const char *const s_names[SF_PROF_N] = {
     "shader", "link", "texture", "fopen", "fread", "malloc", "inflate", "yield", "write",
-    "wait",
+    "wait", "swap", "draw",
 };
 
 static uint64_t s_us[SF_PROF_N], s_calls[SF_PROF_N], s_bytes;
@@ -37,6 +38,113 @@ static uint64_t get(uint64_t *v)
     return __atomic_load_n(v, __ATOMIC_RELAXED);
 }
 
+/* --- frame traces --------------------------------------------------------
+ * sf_prof_trace() records the next frames one by one (time, swap, draw
+ * calls, and every category's share) and logs them in one go afterwards,
+ * so the logging does not slow the frames it measures. Started by the
+ * pre-fight screens below, whose bodyguard line-up scrolls unevenly on
+ * the Vita. */
+#define TRACE_MAX 360
+
+typedef struct {
+    uint32_t dt;                 /* us since the previous frame */
+    uint32_t us[SF_PROF_N];      /* per category, this frame */
+    uint32_t calls[SF_PROF_N];
+} sf_trace_frame;
+
+static sf_trace_frame s_trace[TRACE_MAX];
+static const char *s_trace_what;
+static int s_trace_len, s_trace_want;
+static uint64_t s_trace_calls[SF_PROF_N], s_trace_us[SF_PROF_N];
+
+void sf_prof_trace(const char *what, int frames)
+{
+    int i;
+    if (s_trace_want)
+        return;
+    s_trace_what = what;
+    s_trace_len = 0;
+    s_trace_want = frames < TRACE_MAX ? frames : TRACE_MAX;
+    for (i = 0; i < SF_PROF_N; i++) {
+        s_trace_calls[i] = get(&s_calls[i]);
+        s_trace_us[i] = get(&s_us[i]);
+    }
+    LOGI("trace %s: started, %d frames", what, s_trace_want);
+}
+
+static void trace_dump(void)
+{
+    uint64_t total = 0, worst = 0;
+    int f, i;
+    for (f = 0; f < s_trace_len; f++) {
+        total += s_trace[f].dt;
+        if (s_trace[f].dt > worst)
+            worst = s_trace[f].dt;
+    }
+    LOGI("trace %s: %d frames in %u ms (avg %u.%u ms, worst %u ms); per frame: ms [swap ms, draws] others",
+         s_trace_what, s_trace_len, (unsigned)(total / 1000),
+         (unsigned)(total / (s_trace_len ? s_trace_len : 1) / 1000),
+         (unsigned)(total / (s_trace_len ? s_trace_len : 1) / 100 % 10), (unsigned)(worst / 1000));
+    for (f = 0; f < s_trace_len; f += 4) {
+        char line[600];
+        int n = snprintf(line, sizeof(line), "trace %s %3d:", s_trace_what, f), k;
+        for (k = f; k < f + 4 && k < s_trace_len && n < (int)sizeof(line); k++) {
+            const sf_trace_frame *t = &s_trace[k];
+            n += snprintf(line + n, sizeof(line) - (size_t)n, " | %u.%u [%u.%u, %u]", t->dt / 1000,
+                          t->dt / 100 % 10, t->us[SF_PROF_SWAP] / 1000, t->us[SF_PROF_SWAP] / 100 % 10,
+                          t->calls[SF_PROF_DRAW]);
+            for (i = 0; i < SF_PROF_N && n < (int)sizeof(line); i++)
+                if (i != SF_PROF_SWAP && i != SF_PROF_DRAW && i != SF_PROF_MALLOC && t->us[i] >= 500)
+                    n += snprintf(line + n, sizeof(line) - (size_t)n, " %s %u", s_names[i], t->us[i] / 1000);
+        }
+        LOGI("%s", line);
+    }
+}
+
+static void trace_frame(uint64_t dt)
+{
+    sf_trace_frame *t;
+    int i;
+    if (!s_trace_want)
+        return;
+    t = &s_trace[s_trace_len++];
+    t->dt = (uint32_t)dt;
+    for (i = 0; i < SF_PROF_N; i++) {
+        uint64_t c = get(&s_calls[i]), us = get(&s_us[i]);
+        t->calls[i] = (uint32_t)(c - s_trace_calls[i]);
+        t->us[i] = (uint32_t)(us - s_trace_us[i]);
+        s_trace_calls[i] = c;
+        s_trace_us[i] = us;
+    }
+    if (s_trace_len >= s_trace_want) {
+        trace_dump();
+        s_trace_want = 0;
+    }
+}
+
+/* The pre-fight screens ask how many frames to stay up right after they
+ * are built (0x4a3fe67c): EnemiesScreen, the bodyguard line-up, 276
+ * (0x4a404bb0), VsScreen, a single opponent, 204 (0x4a40567c). Both
+ * answers are kept, as softfp float bits; asking starts a trace a bit
+ * longer than the screen. */
+static uint32_t lineup_frames(void)
+{
+    sf_prof_trace("lineup", 320);
+    return 0x438a0000;   /* 276.0f */
+}
+
+static uint32_t vs_frames(void)
+{
+    sf_prof_trace("vs", 240);
+    return 0x434c0000;   /* 204.0f */
+}
+
+void sf_prof_install(void)
+{
+    sf_game_hook("lineup trace", 0x4a404bb0, 0xe3a00000, 0xe344038a, (void *)lineup_frames);
+    sf_game_hook("vs trace", 0x4a40567c, 0xe3a00000, 0xe344034c, (void *)vs_frames);
+}
+
 void sf_prof_frame(void)
 {
     static uint64_t last_frame, window_start, last_slow_log, frames, slow, worst;
@@ -53,6 +161,7 @@ void sf_prof_frame(void)
     dt = now - last_frame;
     last_frame = now;
     frames++;
+    trace_frame(dt);
     if (dt > worst)
         worst = dt;
     if (dt > SLOW_FRAME_MS * 1000ull) {

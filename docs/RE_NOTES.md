@@ -392,6 +392,10 @@ glGetError after the call and logs the first failures by name).
   Delay 0.5, CallFunc, Delay 2.0). Neither screen overrides draw or
   update: the scroll is plain cocos2d, so a choppy scroll means slow
   frames, not a broken animation.
+- The scroll is a cocos2d-x 2.2 CCMoveTo (0x4a0215cc: 0x4c bytes, start,
+  delta, previous and end positions), interpolated every frame. prof.c
+  hooks both frame-count getters and logs a per-frame trace ("trace
+  lineup" / "trace vs" in debug.log).
 
 ## Quest scripts
 

@@ -339,6 +339,7 @@ static void t_glDrawArrays(GLenum mode, GLint first, GLint count)
     if (!fn)
         fn = (void (*)(GLenum, GLint, GLint))gl_proc("glDrawArrays");
     resolve_attribs();
+    sf_prof_add(SF_PROF_DRAW, 0, 0);
     if (fn)
         fn(mode, first, count);
 }
@@ -349,6 +350,7 @@ static void t_glDrawElements(GLenum mode, GLint count, GLenum type, const void *
     if (!fn)
         fn = (void (*)(GLenum, GLint, GLenum, const void *))gl_proc("glDrawElements");
     resolve_attribs();
+    sf_prof_add(SF_PROF_DRAW, 0, 0);
     if (s_bound_element) {
         sf_buffer *b = buffer_find(s_bound_element, 0);
         if (!b || !b->data)
@@ -691,7 +693,9 @@ static const char *sf_eglQueryString(EGLDisplay d, EGLint name)
 static unsigned sf_eglSwapBuffers(EGLDisplay d, EGLSurface s)
 {
     static unsigned frames;
+    uint64_t t0 = sf_plat_time_us();
     sf_plat_swap();
+    sf_prof_add(SF_PROF_SWAP, sf_plat_time_us() - t0, 0);
     sf_prof_frame();
     sf_hud_frame();
     sf_ui_frame();

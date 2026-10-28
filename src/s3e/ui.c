@@ -191,9 +191,11 @@ void sf_ui_poll(void)
     }
     if (at > 0 && s_frames >= (unsigned)at) {
         const char *f = getenv("SF_FILE_TEST"), *q = getenv("SF_QUESTS_TEST");
-        const char *d = getenv("SF_DIALOG_TEST");
+        const char *d = getenv("SF_DIALOG_TEST"), *t = getenv("SF_TRACE_TEST");
         at = 0;
-        if (d && *d)   /* the game's dialog factory (0x4a51e374): 14 = settings */
+        if (t && *t)   /* a frame trace as the pre-fight screens start (prof.c) */
+            sf_prof_trace("test", atoi(t));
+        else if (d && *d)   /* the game's dialog factory (0x4a51e374): 14 = settings */
             ((void (*)(int, int))G(0x4a51e374))(atoi(d), 0);
         else if (q && *q)
             sf_quests_selftest(q);
