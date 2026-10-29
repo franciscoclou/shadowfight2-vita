@@ -1,14 +1,28 @@
 /* Unit test for src/s3e/file.c's buffered reader: random seeks and reads of
  * every shape against an in-memory model of the same file, through the
- * s3eFile API the game uses. Run with: make -C tests/harness test. */
+ * s3eFile API the game uses; the same on a small .dz, which is held in
+ * memory part way through; and the cached whole-file MD5. Run with:
+ * make -C tests/harness test. */
 #include "s3e/s3e_internal.h"
+#include "s3e/md5.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 char sf_data_dir[256] = "/tmp";
-void sf_log_write(const char *l, const char *f, int n, const char *fmt, ...) {}
+void sf_log_write(const char *l, const char *f, int n, const char *fmt, ...)
+{
+    va_list ap;
+    if (strncmp(fmt, "file:", 5))
+        return;
+    va_start(ap, fmt);
+    printf("  log: ");
+    vprintf(fmt, ap);
+    printf("\n");
+    va_end(ap);
+}
 uint64_t sf_plat_time_us(void) { return 0; }
 void sf_plat_worker_thread(void) {}
 int sf_quests_wants(const char *name) { return 0; }
@@ -29,6 +43,7 @@ static void *fn(const char *name)
 }
 
 #define SIZE (300 * 1024 + 123)
+#define DZ_SIZE (3 * 1024 * 1024 + 77)   /* over file.c's ARCHIVE_WHOLE_AFTER */
 
 /* Read a file back through s3eFile, as the game would right after saving. */
 static int read_back(const char *name, char *out, int cap)
@@ -112,7 +127,42 @@ static int test_deferred(void)
     return fails != 0;
 }
 
-int main(void)
+/* The cached MD5 must equal a fresh one, and change with the file. */
+static int test_md5(void)
+{
+    static uint8_t buf[400 * 1024];
+    char want[33], got[33], again[33];
+    md5_ctx c;
+    FILE *f;
+    int i, fails = 0;
+
+    remove("/tmp/md5cache.txt");
+    for (i = 0; i < (int)sizeof(buf); i++)
+        buf[i] = (uint8_t)(i * 7 + 3);
+    for (i = 0; i < 2; i++) {
+        size_t n = sizeof(buf) - (size_t)i * 1000;
+        f = fopen("/tmp/sf_md5.bin", "wb");
+        fwrite(buf, 1, n, f);
+        fclose(f);
+        md5_init(&c);
+        md5_update(&c, buf, n);
+        md5_hex(&c, want);
+        if (sf_file_md5("rom://sf_md5.bin", got) || strcmp(got, want)) {
+            printf("FAIL  md5 %d: %s want %s\n", i, got, want); fails++;
+        }
+        if (sf_file_md5("rom://sf_md5.bin", again) || strcmp(again, want)) {
+            printf("FAIL  cached md5 %d: %s want %s\n", i, again, want); fails++;
+        }
+    }
+    f = fopen("/tmp/md5cache.txt", "r");
+    if (!f) { printf("FAIL  no md5cache.txt\n"); fails++; }
+    else fclose(f);
+    if (sf_file_md5("rom://sf_md5_missing.bin", got) != -1) { printf("FAIL  md5 of a missing file\n"); fails++; }
+    printf(fails ? "FAILURES: %d\n" : "md5: all passed\n", fails);
+    return fails != 0;
+}
+
+static int random_ops(const char *path, int fsize)
 {
     void *(*open_)(const char *, const char *) = fn("s3eFileOpen");
     uint32_t (*read_)(void *, uint32_t, uint32_t, void *) = fn("s3eFileRead");
@@ -122,20 +172,22 @@ int main(void)
     int32_t (*eof_)(void *) = fn("s3eFileEOF");
     int32_t (*getc_)(void *) = fn("s3eFileGetChar");
     int32_t (*close_)(void *) = fn("s3eFileClose");
-    static uint8_t data[SIZE], got[SIZE + 64];
+    static uint8_t data[DZ_SIZE], got[DZ_SIZE + 64];
+    char name[300];
     long pos = 0;
     int i, fails = 0;
-    FILE *f = fopen("/tmp/sf_test_file.bin", "wb");
+    FILE *f = fopen(path, "wb");
     void *h;
 
     srand(1234);
-    for (i = 0; i < SIZE; i++)
+    for (i = 0; i < fsize; i++)
         data[i] = (uint8_t)rand();
-    fwrite(data, 1, SIZE, f);
+    fwrite(data, 1, (size_t)fsize, f);
     fclose(f);
 
-    h = open_("raw:///tmp/sf_test_file.bin", "rb");
-    if (!h || size_(h) != SIZE) {
+    snprintf(name, sizeof(name), "raw://%s", path);
+    h = open_(name, "rb");
+    if (!h || size_(h) != fsize) {
         printf("FAIL  open/size\n");
         return 1;
     }
@@ -143,10 +195,10 @@ int main(void)
         int op = rand() % 10;
         if (op < 3) {                       /* seek */
             int origin = rand() % 3;
-            long off = rand() % (SIZE + 2000) - (origin ? 1000 : 0);
-            long target = origin == 0 ? off : origin == 1 ? pos + off : SIZE + off - SIZE / 2;
+            long off = rand() % (fsize + 2000) - (origin ? 1000 : 0);
+            long target = origin == 0 ? off : origin == 1 ? pos + off : fsize + off - fsize / 2;
             if (origin == 2)
-                off -= SIZE / 2;
+                off -= fsize / 2;
             if (target < 0) {
                 if (seek_(h, (int32_t)off, origin) == 0) { printf("FAIL  negative seek accepted\n"); fails++; }
                 continue;
@@ -156,7 +208,7 @@ int main(void)
         } else if (op < 8) {                /* read */
             uint32_t size = 1 + rand() % 4;
             uint32_t count = rand() % 4 ? 1 + rand() % 64 : 1 + rand() % (40 * 1024);
-            long avail = pos < SIZE ? SIZE - pos : 0;
+            long avail = pos < fsize ? fsize - pos : 0;
             uint32_t want = (uint32_t)(avail / size < count ? avail / size : count);
             uint32_t n = read_(got, size, count, h);
             if (n != want || (n && memcmp(got, data + pos, (size_t)n * size))) {
@@ -165,9 +217,9 @@ int main(void)
             }
             pos += (long)n * size;
         } else if (op == 8) {               /* getchar */
-            int c = getc_(h), want = pos < SIZE ? data[pos] : -1;
+            int c = getc_(h), want = pos < fsize ? data[pos] : -1;
             if (c != want) { printf("FAIL  getchar at %ld\n", pos); fails++; }
-            if (pos < SIZE)
+            if (pos < fsize)
                 pos++;
         } else if (tell_(h) != pos) {
             printf("FAIL  tell %d want %ld\n", tell_(h), pos);
@@ -177,6 +229,18 @@ int main(void)
     seek_(h, 0, 2);
     if (!(read_(got, 1, 1, h) == 0 && eof_(h))) { printf("FAIL  eof at end\n"); fails++; }
     close_(h);
-    printf(fails ? "FAILURES: %d\n" : "buffered reader: 20000 random ops, all passed\n", fails);
-    return test_deferred() || fails != 0;
+    if (fails)
+        printf("FAILURES (%s): %d\n", path, fails);
+    else
+        printf("buffered reader (%s): 20000 random ops, all passed\n", path);
+    return fails != 0;
+}
+
+int main(void)
+{
+    int r = random_ops("/tmp/sf_test_file.bin", SIZE);
+    mkdir("/tmp/assets", 0777);
+    r |= random_ops("/tmp/assets/sf_test_file.dz", DZ_SIZE);
+    r |= test_deferred();
+    return test_md5() || r;
 }

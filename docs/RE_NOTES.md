@@ -216,6 +216,18 @@ manager+0xb90, manager 0x4a266ed4, lookup 0x4a25e490).
   config_shadowfight_raid_dev.xml under
   assets.nekkimobile.ru/shadowfight/data/ (plain HTTP still works; the
   HTTPS certificate has expired).
+- Whole-file MD5 0x4a1fa6fc(&out, &path): opens path "rb" through the
+  game's libc (s3eFileOpen), MD5s it in 1 KB freads, returns 32 lowercase
+  hex digits ("%02x", 0x4a1f9f98) or "" if it does not open. Nine
+  callers; at boot 0x4a69e7a8 checks rom://assets/animations.dz and
+  files.dz is checked twice (18.5 MB). hashes.c hooks it with file.c's
+  cached digest (<data>/md5cache.txt, game files only, keyed by size and
+  mtime).
+- Derbh reads an archive in 64 KB windows from each chunk's start and
+  uses only the chunk: loading the moves at boot read animations.dz
+  (14 MB) about 2.5 times. Boot read 73.9 MB in 2064 disk reads before
+  the two fixes (hashes.c, file.c holding assets/*.dz whole after 1 MB),
+  36.0 MB in 399 after (harness, first 40 frames).
 - Derbh header: "DTRZ", u16 files, u16 dirs, u8 version, file names, dir
   names ('\'-separated), then per file a u16 dir index (0 = root) and chunk
   ids up to 0xffff. Every pack carries its own settings.xml.

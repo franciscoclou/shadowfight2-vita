@@ -20,7 +20,7 @@ test_compress: test_compress.c $(ROOT)/src/s3e/compress.c
 test_hud: test_hud.c $(ROOT)/src/s3e/hud.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lpthread
 
-test_file: test_file.c $(ROOT)/src/s3e/file.c
+test_file: test_file.c $(ROOT)/src/s3e/file.c $(ROOT)/src/s3e/md5.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lpthread
 
 test_memory: test_memory.c $(ROOT)/src/s3e/memory.c

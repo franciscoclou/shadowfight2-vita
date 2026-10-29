@@ -87,6 +87,10 @@ void *sf_file_load(const char *name, uint32_t *size);
 void sf_file_selftest(const char *name);   /* harness diagnostics */
 void sf_file_sync(void);   /* wait for the deferred writes to reach the disk */
 void *sf_file_load_raw(const char *name, uint32_t *size);   /* without quests.c's edits */
+int sf_file_md5(const char *name, char out[33]);   /* whole-file MD5, cached for game files */
+
+/* --- hashes.c --- */
+void sf_hashes_install(void);   /* after sf_game_init */
 
 /* --- quests.c --- */
 int sf_quests_wants(const char *name);

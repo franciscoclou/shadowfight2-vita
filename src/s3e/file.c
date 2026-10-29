@@ -13,6 +13,7 @@
  * name to each registered user filesystem before touching the disk.
  */
 #include "s3e/s3e_internal.h"
+#include "s3e/md5.h"
 #include "platform/platform.h"
 
 #include <dirent.h>
@@ -87,6 +88,17 @@ static void ufs_unlock(void)
  * read inside the buffered window is a memcpy. */
 #define RBUF_SIZE (16 * 1024)
 
+/* Derbh reads its archives in 64 KB windows from each chunk's start and
+ * uses only the chunk, so loading every move at boot read animations.dz
+ * (14 MB) two and a half times over, in an order no small cache helps.
+ * A .dz under assets/ of at most ARCHIVE_WHOLE_MAX bytes is read whole
+ * into memory once ARCHIVE_WHOLE_AFTER bytes of it have come off the disk,
+ * and served from there until closed. files.dz, of which the game reads
+ * one window, stays on the disk; so do the content packs (in <data>),
+ * of which a fight reads a little. */
+#define ARCHIVE_WHOLE_MAX   (16 * 1024 * 1024)
+#define ARCHIVE_WHOLE_AFTER (1024 * 1024)
+
 typedef struct sf_file {
     int kind;                 /* 1 = stdio (writable), 2 = user fs, 3 = memory, 4 = buffered read,
                                  5 = deferred write */
@@ -106,6 +118,9 @@ typedef struct sf_file {
     uint32_t wb_len, wb_cap, wb_pos;
     int append;
     int64_t base;             /* kind 5, append: size on disk before, -1 until asked */
+    char *archive;            /* kind 4: a small .dz (its name), which may be held whole */
+    uint8_t *whole;           /* kind 4: the whole file, once held */
+    uint64_t disk_bytes;      /* kind 4: read from the disk so far */
 } sf_file;
 
 static void make_parents(const char *path);
@@ -346,6 +361,13 @@ static void resolve(const char *name, char *out, size_t n, int for_write)
         wq_wait(out);
 }
 
+static int is_archive(const char *path)
+{
+    size_t n = strlen(path);
+    return strstr(path, "/assets/") && n > 3 && path[n - 3] == '.' && (path[n - 2] | 0x20) == 'd' &&
+           (path[n - 1] | 0x20) == 'z';
+}
+
 /* mkdir -p for the parent of a ram:// file about to be written. */
 static void make_parents(const char *path)
 {
@@ -481,6 +503,8 @@ static sf_file *open_raw(const char *name, const char *mode)
             fseek(fp, 0, SEEK_END);
             f->size = ftell(fp);
             fseek(fp, 0, SEEK_SET);
+            if (f->size > 0 && f->size <= ARCHIVE_WHOLE_MAX && is_archive(path))
+                f->archive = strdup(name);
         }
     }
     LOGV("s3eFileOpen(%s, %s) -> %s", name, mode, path);
@@ -517,6 +541,8 @@ static int32_t sf_s3eFileClose(sf_file *f)
     } else if (f->kind == 1 || f->kind == 4) {
         fclose(f->fp);
         free(f->rb);
+        free(f->whole);
+        free(f->archive);
     } else if (f->kind == 2) {
         ufs_lock();
         f->ufs->close(f->uh);
@@ -530,13 +556,56 @@ static int32_t sf_s3eFileClose(sf_file *f)
 
 /* --- io ---------------------------------------------------------------- */
 
+/* Read the whole of a small archive into memory. On any failure the file
+ * stays on the disk, read as before. */
+static void hold_whole(sf_file *f)
+{
+    uint8_t *buf = malloc((size_t)f->size);
+    uint64_t t0 = sf_plat_time_us();
+    int64_t at = 0;
+
+    if (buf && fseek(f->fp, 0, SEEK_SET) == 0) {
+        while (at < f->size) {
+            size_t want = f->size - at > 1024 * 1024 ? 1024 * 1024 : (size_t)(f->size - at);
+            size_t got = fread(buf + at, 1, want, f->fp);
+            if (!got)
+                break;
+            at += (int64_t)got;
+        }
+    }
+    f->fpos = -1;   /* the stream moved: the next disk read seeks */
+    sf_prof_add(SF_PROF_FREAD, sf_plat_time_us() - t0, (uint32_t)at);
+    if (!buf || at != f->size) {
+        LOGW("file: could not hold %s in memory (%lld of %lld bytes)", f->archive, (long long)at,
+             (long long)f->size);
+        free(buf);
+        free(f->archive);
+        f->archive = NULL;
+        return;
+    }
+    f->whole = buf;
+    LOGI("file: %s held in memory (%lld KB, after %llu KB read in windows)", f->archive,
+         (long long)(f->size / 1024), (unsigned long long)(f->disk_bytes / 1024));
+}
+
 /* Read len bytes at f->pos through the buffer; returns bytes read. Only
  * real disk reads are timed (prof "fread"): timing every call cost more
  * than the calls themselves. */
 static uint32_t buffered_read(sf_file *f, uint8_t *dst, uint32_t len)
 {
     uint32_t done = 0;
+    if (f->archive && !f->whole && f->disk_bytes >= ARCHIVE_WHOLE_AFTER)
+        hold_whole(f);
     while (done < len && f->pos < f->size) {
+        if (f->whole) {
+            uint32_t n = len - done;
+            if ((int64_t)n > f->size - f->pos)
+                n = (uint32_t)(f->size - f->pos);
+            memcpy(dst + done, f->whole + f->pos, n);
+            done += n;
+            f->pos += n;
+            continue;
+        }
         if (f->pos >= f->rb_off && f->pos < f->rb_off + f->rb_len) {
             uint32_t at = (uint32_t)(f->pos - f->rb_off), n = f->rb_len - at;
             if (n > len - done)
@@ -557,6 +626,7 @@ static uint32_t buffered_read(sf_file *f, uint8_t *dst, uint32_t len)
                 break;
             got = fread(into, 1, want, f->fp);
             f->fpos = f->pos + (int64_t)got;
+            f->disk_bytes += got;
             sf_prof_add(SF_PROF_FREAD, sf_plat_time_us() - t0, (uint32_t)got);
             if (!got)
                 break;
@@ -972,6 +1042,138 @@ static int32_t sf_s3eFileListClose(sf_list *l)
         free(l);
     }
     return S3E_RESULT_SUCCESS;
+}
+
+/* --- whole-file MD5 ----------------------------------------------------- */
+
+/* The game MD5s some files whole on every boot (hashes.c): files.dz twice
+ * and animations.dz, 18.5 MB of reads, always the same answer. Digests of
+ * read-only game files (not ram://, not edited by quests.c, not inside a
+ * pack) are kept in <data>/md5cache.txt with the file's size and mtime,
+ * and recomputed when either changes. Saves are always hashed afresh: one
+ * rewritten within a second at the same size would keep its old digest. */
+#define MD5_CACHE_MIN (256 * 1024)   /* smaller files are not worth a line */
+#define MD5_CACHE_MAX 32
+
+static struct { char path[256]; int64_t size, mtime; char hex[33]; } s_md5c[MD5_CACHE_MAX];
+static int s_md5c_n = -1;
+static pthread_mutex_t s_md5c_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void md5c_file(char *out, size_t n)
+{
+    snprintf(out, n, "%s/md5cache.txt", sf_data_dir);
+}
+
+static void md5c_load(void)
+{
+    char path[512], line[400];
+    FILE *fp;
+
+    s_md5c_n = 0;
+    md5c_file(path, sizeof(path));
+    if (!(fp = fopen(path, "r")))
+        return;
+    while (s_md5c_n < MD5_CACHE_MAX && fgets(line, sizeof(line), fp)) {
+        long long size, mtime;
+        char hex[33], p[256];
+        if (sscanf(line, "%lld %lld %32[0-9a-f] %255[^\n]", &size, &mtime, hex, p) == 4 && strlen(hex) == 32) {
+            snprintf(s_md5c[s_md5c_n].path, sizeof(s_md5c[0].path), "%s", p);
+            s_md5c[s_md5c_n].size = size;
+            s_md5c[s_md5c_n].mtime = mtime;
+            memcpy(s_md5c[s_md5c_n].hex, hex, 33);
+            s_md5c_n++;
+        }
+    }
+    fclose(fp);
+}
+
+static void md5c_save(void)
+{
+    char path[512];
+    FILE *fp;
+    int i;
+
+    md5c_file(path, sizeof(path));
+    if (!(fp = fopen(path, "w")))
+        return;
+    for (i = 0; i < s_md5c_n; i++)
+        fprintf(fp, "%lld %lld %s %s\n", (long long)s_md5c[i].size, (long long)s_md5c[i].mtime, s_md5c[i].hex,
+                s_md5c[i].path);
+    fclose(fp);
+}
+
+/* The disk file a read-only open of name would read, if it is a game file
+ * that can be cached; 0 otherwise. */
+static int md5c_key(const char *name, sf_file *f, char *path, size_t n, struct stat *st)
+{
+    char ram[300];
+    if (f->kind != 4 || sf_quests_wants(name))
+        return 0;
+    resolve(name, path, n, 0);
+    snprintf(ram, sizeof(ram), "%s/ram/", sf_data_dir);
+    if (!strncmp(path, ram, strlen(ram)) || strlen(path) >= sizeof(s_md5c[0].path))
+        return 0;
+    return stat(path, st) == 0 && st->st_size >= MD5_CACHE_MIN && (int64_t)st->st_size == f->size;
+}
+
+/* Lowercase hex MD5 of everything a read-only open of name reads, as the
+ * game computes it. Returns 0, or -1 if the file does not open. */
+int sf_file_md5(const char *name, char out[33])
+{
+    char path[512];
+    struct stat st;
+    sf_file *f = sf_s3eFileOpen(name, "rb");
+    int cache, i;
+    md5_ctx c;
+    uint8_t *buf;
+    uint32_t got;
+
+    if (!f)
+        return -1;
+    cache = md5c_key(name, f, path, sizeof(path), &st);
+    if (cache) {
+        pthread_mutex_lock(&s_md5c_lock);
+        if (s_md5c_n < 0)
+            md5c_load();
+        for (i = 0; i < s_md5c_n; i++)
+            if (!strcmp(s_md5c[i].path, path) && s_md5c[i].size == (int64_t)st.st_size &&
+                s_md5c[i].mtime == (int64_t)st.st_mtime) {
+                memcpy(out, s_md5c[i].hex, 33);
+                pthread_mutex_unlock(&s_md5c_lock);
+                sf_s3eFileClose(f);
+                return 0;
+            }
+        pthread_mutex_unlock(&s_md5c_lock);
+    }
+    md5_init(&c);
+    if ((buf = malloc(64 * 1024))) {
+        while ((got = sf_s3eFileRead(buf, 1, 64 * 1024, f)) > 0)
+            md5_update(&c, buf, got);
+        free(buf);
+    } else {
+        uint8_t b[1024];
+        while ((got = sf_s3eFileRead(b, 1, sizeof(b), f)) > 0)
+            md5_update(&c, b, got);
+    }
+    md5_hex(&c, out);
+    sf_s3eFileClose(f);
+    if (cache) {
+        pthread_mutex_lock(&s_md5c_lock);
+        for (i = 0; i < s_md5c_n && strcmp(s_md5c[i].path, path); i++)
+            ;
+        if (i == s_md5c_n && s_md5c_n < MD5_CACHE_MAX)
+            s_md5c_n++;
+        if (i < s_md5c_n) {
+            memcpy(s_md5c[i].path, path, strlen(path) + 1);   /* fits: md5c_key checked */
+            s_md5c[i].size = (int64_t)st.st_size;
+            s_md5c[i].mtime = (int64_t)st.st_mtime;
+            memcpy(s_md5c[i].hex, out, 33);
+            md5c_save();
+        }
+        pthread_mutex_unlock(&s_md5c_lock);
+        LOGI("file: MD5 of %s cached (%s)", name, out);
+    }
+    return 0;
 }
 
 static void *load(sf_file *f, uint32_t *size);
