@@ -19,7 +19,7 @@
 
 static const char *const s_names[SF_PROF_N] = {
     "shader", "link", "texture", "fopen", "fread", "malloc", "inflate", "yield", "write",
-    "wait", "swap", "draw",
+    "wait", "swap", "draw", "open.packs", "open.stat", "open.disk",
 };
 
 static uint64_t s_us[SF_PROF_N], s_calls[SF_PROF_N], s_bytes;
@@ -167,7 +167,7 @@ void sf_prof_frame(void)
     if (dt > SLOW_FRAME_MS * 1000ull) {
         slow++;
         if (now - last_slow_log > 1000000) {
-            char line[512];
+            char line[768];
             int n = snprintf(line, sizeof(line), "slow frame: %u ms (", (unsigned)(dt / 1000)), any = 0;
             for (i = 0; i < SF_PROF_N && n < (int)sizeof(line); i++) {
                 unsigned ms = (unsigned)((get(&s_us[i]) - s_frame_us[i]) / 1000);
@@ -183,7 +183,7 @@ void sf_prof_frame(void)
         s_frame_us[i] = get(&s_us[i]);
 
     if (now - window_start >= REPORT_US) {
-        char line[512];
+        char line[768];
         uint64_t span = now - window_start;
         int n, active = 0;
         n = snprintf(line, sizeof(line), "prof %us: %u frames (%u fps), %u over %d ms, worst %u ms",

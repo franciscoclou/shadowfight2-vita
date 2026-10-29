@@ -352,9 +352,12 @@ static void resolve(const char *name, char *out, size_t n, int for_write)
     else {
         join(out, n, ram, norm);
         if (!for_write) {
+            uint64_t t0;
             wq_wait(out);
+            t0 = sf_plat_time_us();
             if (stat(out, &st) != 0)
                 join(out, n, sf_data_dir, norm);
+            sf_prof_add(SF_PROF_OPEN_STAT, sf_plat_time_us() - t0, 0);
         }
     }
     if (!for_write)
@@ -445,12 +448,14 @@ static sf_file *open_raw(const char *name, const char *mode)
      * arenas found none of their atlas frames and drew each piece with
      * the whole atlas. Marmalade hands user filesystems a plain mode too. */
     if (!is_writable_mode(mode)) {
+        uint64_t t0 = sf_plat_time_us();
         for (i = s_nuserfs - 1; i >= 0; i--) {
             void *h;
             ufs_lock();
             h = s_userfs[i].open(name, "rb");
             ufs_unlock();
             if (h) {
+                sf_prof_add(SF_PROF_OPEN_PACKS, sf_plat_time_us() - t0, 0);
                 f = calloc(1, sizeof(*f));
                 f->kind = 2;
                 f->ufs = &s_userfs[i];
@@ -459,6 +464,7 @@ static sf_file *open_raw(const char *name, const char *mode)
                 return f;
             }
         }
+        sf_prof_add(SF_PROF_OPEN_PACKS, sf_plat_time_us() - t0, 0);
     }
 
     if (!is_writable_mode(mode))
@@ -481,8 +487,11 @@ static sf_file *open_raw(const char *name, const char *mode)
     }
     {
         char m[8];
+        uint64_t t0 = sf_plat_time_us();
         snprintf(m, sizeof(m), "%s%s", mode, strchr(mode, 'b') ? "" : "b");
         FILE *fp = fopen(path, m);
+        if (!is_writable_mode(mode))
+            sf_prof_add(SF_PROF_OPEN_DISK, sf_plat_time_us() - t0, 0);
         if (!fp) {
             s_err = S3E_FILE_ERR_NOT_FOUND;
             LOGV("s3eFileOpen(%s, %s) -> not found (%s)", name, mode, path);

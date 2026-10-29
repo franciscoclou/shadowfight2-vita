@@ -44,7 +44,10 @@ int  sf_quit_requested(void);
 /* --- prof.c --- */
 enum { SF_PROF_SHADER, SF_PROF_LINK, SF_PROF_TEXTURE, SF_PROF_FOPEN, SF_PROF_FREAD,
        SF_PROF_MALLOC, SF_PROF_INFLATE, SF_PROF_YIELD, SF_PROF_WRITE, SF_PROF_WAIT,
-       SF_PROF_SWAP, SF_PROF_DRAW, SF_PROF_N };
+       SF_PROF_SWAP, SF_PROF_DRAW,
+       /* where a read-only open's time goes (inside fopen): asking the
+        * archives, checking ram/ for a save copy, opening on the disk */
+       SF_PROF_OPEN_PACKS, SF_PROF_OPEN_STAT, SF_PROF_OPEN_DISK, SF_PROF_N };
 void sf_prof_add(int cat, uint64_t us, uint32_t bytes);
 void sf_prof_frame(void);   /* once per presented frame */
 void sf_prof_trace(const char *what, int frames);   /* log the next frames one by one */
