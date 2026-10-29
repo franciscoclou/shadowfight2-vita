@@ -7,16 +7,18 @@ Writes 768-scale PNGs (the asset set the Vita loads), which ui_assets.S
 embeds in the eboot:
 
   controls_help.png    the Vita button map shown by the CONTROLS dialog
+  controls_title.png   that dialog's "CONTROLS" title, in gold
   pause_controls.png   round CONTROLS icon for the pause dialog, in the
                        style of its home/play icons (144 px, drawn at 1.04)
   pause_selected.png   the pause icons' pressed disk, cut from the atlas
   watermark.png        GitHub mark + "franciscoclou" for the cheats screen
-                       (in the parchment ink, like controls_help.png)
+                       (gold, like controls_help.png)
 
 Text uses the game's bitmap font (fonts/eng/sakkal.fnt, Sakkal Majalla)
 and the fight icons come from the fight button atlas, both read from the
 1536 asset set and scaled down.
 """
+import os
 import plistlib
 import re
 import subprocess
@@ -26,8 +28,11 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
-game_out, out = Path(sys.argv[1]), Path(sys.argv[2])
-out.mkdir(parents=True, exist_ok=True)
+if __name__ == "__main__":
+    game_out, out = Path(sys.argv[1]), Path(sys.argv[2])
+    out.mkdir(parents=True, exist_ok=True)
+else:   # imported by make_livearea.py for the font
+    game_out, out = Path(os.environ["GAME_OUT"]), None
 HI = game_out / "assets/1536"
 
 CREAM = (246, 233, 190)
@@ -203,7 +208,7 @@ def stick_glyph(px):
 # --- controls_help.png --------------------------------------------------------
 
 def controls_help():
-    """One column for SimpleDialog's narrow parchment, in its title's brown."""
+    """One column for SimpleDialog's narrow parchment, in the game's title gold."""
     row_h, glyph, icon, label_px = 78, 62, 66, 50
     pills_w = max(pill_glyph(s, 42).width for s in ("START", "SELECT"))
     rows = [
@@ -219,7 +224,7 @@ def controls_help():
         ([pill_glyph("R", 42, 64)], None, "DASH RIGHT"),
     ]
     keys_w = max(glyph * 2 + 12, pills_w, glyph + 14 + icon) + 22
-    labels = [text(r[2], label_px, INK, shadow=False) if r else None for r in rows]
+    labels = [text(r[2], label_px, CREAM, gradient=GOLD) if r else None for r in rows]
     w = keys_w + max(t.width for t in labels if t)
     gap_h = 26
     h = sum(row_h if r else gap_h for r in rows)
@@ -242,6 +247,13 @@ def controls_help():
         y += row_h
     im = im.crop(im.getbbox())
     im.save(out / "controls_help.png", optimize=True)
+    return im
+
+
+def controls_title():
+    """SimpleDialog's title is a size-95 label; ui.c puts this in its place."""
+    im = text("CONTROLS", 95, CREAM, gradient=GOLD)
+    im.save(out / "controls_title.png", optimize=True)
     return im
 
 
@@ -352,7 +364,8 @@ def watermark():
 
 
 if __name__ == "__main__":
-    for name, im in (("controls_help", controls_help()), ("watermark", watermark())):
+    for name, im in (("controls_help", controls_help()), ("controls_title", controls_title()),
+                     ("watermark", watermark())):
         print(f"{name}.png {im.size}")
     pause_icon()
     print("pause_controls.png (144, 144), pause_selected.png")

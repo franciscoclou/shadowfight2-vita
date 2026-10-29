@@ -15,6 +15,8 @@
  *
  * The help is the game's SimpleDialog with controls_help.png on its
  * message label; blank lines in the message give the dialog its height.
+ * Its title label (dlg+0x178, brown) is hidden under controls_title.png,
+ * gold like the game's own titles.
  *
  * Images (src/assets, scripts/make_ui_art.py) are linked into the eboot
  * (ui_assets.S) and opened as memory files under textures/sfport/.
@@ -29,6 +31,7 @@
 /* --- embedded images ------------------------------------------------------ */
 
 extern const uint8_t sf_asset_controls_help[], sf_asset_controls_help_end[];
+extern const uint8_t sf_asset_controls_title[], sf_asset_controls_title_end[];
 extern const uint8_t sf_asset_pause_controls[], sf_asset_pause_controls_end[];
 extern const uint8_t sf_asset_pause_selected[], sf_asset_pause_selected_end[];
 extern const uint8_t sf_asset_watermark[], sf_asset_watermark_end[];
@@ -37,6 +40,7 @@ extern const uint8_t sf_asset_watermark[], sf_asset_watermark_end[];
 
 static const struct { const char *name; const uint8_t *begin, *end; } s_assets[] = {
     { "controls_help.png", sf_asset_controls_help, sf_asset_controls_help_end },
+    { "controls_title.png", sf_asset_controls_title, sf_asset_controls_title_end },
     { "pause_controls.png", sf_asset_pause_controls, sf_asset_pause_controls_end },
     { "pause_selected.png", sf_asset_pause_selected, sf_asset_pause_selected_end },
     { "watermark.png", sf_asset_watermark, sf_asset_watermark_end },
@@ -65,6 +69,25 @@ const uint8_t *sf_ui_asset(const char *path, uint32_t *size)
 #define HELP_LINES  9        /* blank message lines: the dialog's height */
 #define HELP_SCALE  0.6f     /* controls_help.png in the dialog */
 
+typedef void (*add_child_z_fn)(void *node, void *child, int z);
+
+/* The title label (0x4a31a604) is a child of the dialog at z 2; its origin
+ * is the centre of its text, as the sprite's is. */
+static void gold_title(uint8_t *dlg)
+{
+    void *title = *(void **)(dlg + 0x178);
+    void *pic = sf_game_sprite(ASSET_DIR "controls_title.png");
+
+    if (!title || !pic) {
+        LOGE("ui: controls title not replaced (label %p, sprite %p)", title, pic);
+        return;
+    }
+    ((setxy_fn)VT(pic, NODE_SET_POS))(pic, ((getf_fn)VT(title, NODE_GET_X))(title),
+                                      ((getf_fn)VT(title, NODE_GET_Y))(title));
+    ((add_child_z_fn)VT(dlg, NODE_ADD_CHILD_Z))(dlg, pic, 2);
+    ((setb_fn)VT(title, NODE_SET_VISIBLE))(title, 0);
+}
+
 void sf_ui_show_controls(void)
 {
     char text[HELP_LINES + 1];
@@ -82,6 +105,7 @@ void sf_ui_show_controls(void)
      * closing this one over the pause dialog would resume the fight under
      * it. The flag is already up there; this dialog leaves it alone. */
     *((uint8_t *)dlg + 0x130) = 0;
+    gold_title(dlg);
     label = *(void **)((uint8_t *)dlg + 0x1bc);   /* SimpleDialog's message */
     pic = sf_game_sprite(ASSET_DIR "controls_help.png");
     if (!label || !pic) {

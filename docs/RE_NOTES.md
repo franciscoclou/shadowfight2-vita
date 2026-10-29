@@ -351,7 +351,10 @@ crash, so s3eDeviceGetInt reports 640 MB (RAM + CDRAM).
   0x64/0x68 Y, 0x88/0x8c content size, 0x90 setVisible, 0xc8 addChild.
 - SimpleDialog 0x4a50f6a4: 0 buttons if ok and cancel are empty, 1 if
   only cancel is; a6 picks the button skin (1 beige, 0 brown). The
-  message label is dlg+0x1bc and the dialog's height follows it.
+  message label is dlg+0x1bc and the dialog's height follows it. The
+  title is a size-95 label at dlg+0x178, made by vtable slot 0x268
+  (0x4a31a604; SimpleDialog vtable 0x4a8b8568) and added to the dialog at
+  z 2; 0x4a183c0c(label, &ccColor3B) colours it (103, 62, 36).
   0x4a324678 reads the content as a label (+0x128), so it cannot be a
   plain sprite. Its scroll ends are fight/popups/result/Background_Left
   and _Right.png, shipped as Background_left/right.png: found on the

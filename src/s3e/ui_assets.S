@@ -12,6 +12,7 @@ sf_asset_\name\()_end:
     .endm
 
     asset controls_help, "assets/controls_help.png"
+    asset controls_title, "assets/controls_title.png"
     asset pause_controls, "assets/pause_controls.png"
     asset pause_selected, "assets/pause_selected.png"
     asset watermark, "assets/watermark.png"
