@@ -13,9 +13,11 @@ set -euo pipefail
 cd "$REPO_ROOT"
 GAME_OUT="$GAME_OUT" python3 scripts/make_livearea.py "$APK_DIR" sce_sys
 
+# The gate's place comes from the style: a1 centres it, psmobile puts it
+# on the right, where make_livearea.py leaves room for it.
 cat > sce_sys/livearea/contents/template.xml <<'XML'
 <?xml version="1.0" encoding="utf-8"?>
-<livearea style="a1" format-ver="01.00" content-rev="1">
+<livearea style="psmobile" format-ver="01.00" content-rev="1">
   <livearea-background>
     <image>bg.png</image>
   </livearea-background>

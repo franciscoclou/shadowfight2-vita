@@ -8,8 +8,8 @@ gate 280x158. Every one must be an 8-bit palette PNG -- truecolour makes the
 install fail at 99% with 0x8010113D. scripts/check_sce_sys.py enforces that.
 
 icon0 is the game's own icon. bg and the gate come from art/key_art.png
-(the Shadow Fight 2 key art, 1200x554): style a1 puts the gate on the
-right half of the background, so the characters are cut out of the art and
+(the Shadow Fight 2 key art, 1200x554): style psmobile (make_livearea.sh)
+puts the gate on the right half of the background, so the characters are cut out of the art and
 fitted into the left half, over its parchment with them painted out. The
 gate is the logo.
 """
