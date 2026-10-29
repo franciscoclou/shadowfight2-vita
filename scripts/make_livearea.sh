@@ -11,7 +11,7 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 
 cd "$REPO_ROOT"
-python3 -I scripts/make_livearea.py "$APK_DIR" sce_sys
+GAME_OUT="$GAME_OUT" python3 scripts/make_livearea.py "$APK_DIR" sce_sys
 
 cat > sce_sys/livearea/contents/template.xml <<'XML'
 <?xml version="1.0" encoding="utf-8"?>
