@@ -41,6 +41,7 @@ scripts/log.sh
 scripts/make_livearea.py
 scripts/make_livearea.sh
 scripts/make_ui_art.py
+scripts/package_full.sh
 scripts/parsedump.sh
 scripts/profile_report.py
 scripts/pull_save.sh
