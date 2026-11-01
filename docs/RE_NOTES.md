@@ -276,6 +276,16 @@ manager+0xb90, manager 0x4a266ed4, lookup 0x4a25e490).
   (the "_" is part of it), map at profile+0xd0, value string at record+0xc.
   Read that way by QuestCondition (0x4a307040); 0x4a291808(profile, &name,
   &value) is SetVariable (QuestActionVariable, 0x4a2f32f0).
+- What hides an item from a shop tab: tab query 0x4a26cda4 (type, then
+  item+0x1d4 > 0, then not the slot's default item from 0x4a6ad5dc), then
+  list filter 0x4a6583d0 (vtable+0x14 false, then label). +0x1d4 starts as
+  !ShopHide; 0x4a705284 sets it to 1 when an inventory entry gets the item,
+  0x4a27b014 restores it at count 0, so ShopHide never hides what is owned.
+  vtable+0x14 (0x4a252e5c) is Hidden="1" at +0x1f4: placeholders only (Fists,
+  NoMagic...). The label is the one filter that hides owned items; packs.c
+  skips it for them, in the shop's calls only. Label at item+0x64, name
+  +0x4c. Inventory: entries at profile+0x174, entry+0x1c count, +0x20
+  equipped, +0x3c item.
 - The shop's "Defeat Lynx to unlock ranged weapons" (shopRangedLocked,
   0x4a65c084) is shown whenever the ranged list is empty.
 

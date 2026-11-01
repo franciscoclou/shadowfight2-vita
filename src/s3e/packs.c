@@ -226,11 +226,54 @@ static void grant_won_acts(void *profile)
     busy = 0;
 }
 
+/* The shop lists an item only if its label is unlocked, owned or not, and
+ * rewards hand out items of acts still locked: worn, but in no list. Items
+ * the player owns skip the label in the shop's lists alone (0x4a6583d0,
+ * 0x4a659f44, which pass &item->PackLabel); quests ask the same question and
+ * must keep the real answer. */
+static const uint32_t s_shop_checks[] = {   /* return addresses */
+    0x4a65843c, 0x4a658538, 0x4a659ff0, 0x4a65a154,
+};
+
+static int asked_by_shop(void *ret)
+{
+    size_t i;
+    for (i = 0; i < sizeof(s_shop_checks) / sizeof(s_shop_checks[0]); i++)
+        if (ret == G(s_shop_checks[i]))
+            return 1;
+    return 0;
+}
+
+/* Inventory: vector of entries at profile+0x174; entry+0x3c the item
+ * (0x4a705144), entry+0x1c the count (0x4a704d4c). */
+static int item_owned(void *profile, void *item)
+{
+    void **it = *(void ***)((uint8_t *)profile + 0x174);
+    void **end = *(void ***)((uint8_t *)profile + 0x178);
+    for (; it < end; it++) {
+        uint8_t *entry = *it;
+        if (*(void **)(entry + 0x3c) == item && *(int32_t *)(entry + 0x1c) > 0)
+            return 1;
+    }
+    return 0;
+}
+
 /* Replaces 0x4a2854b0: is this label unlocked for the profile? */
 static int label_unlocked(void *profile, gstring *label)
 {
+    void *ret = __builtin_return_address(0);
+    uint8_t *item;
+
     grant_won_acts(profile);
-    return ((label_index_fn)G(0x4a285414))(profile, label) >= 0;
+    if (((label_index_fn)G(0x4a285414))(profile, label) >= 0)
+        return 1;
+    if (!asked_by_shop(ret))
+        return 0;
+    item = (uint8_t *)label - 0x64;   /* PackLabel; the name is at +0x4c */
+    if (!item_owned(profile, item))
+        return 0;
+    LOGI("packs: shop lists owned %s, label %s still locked", ((gstring *)(item + 0x4c))->begin, label->begin);
+    return 1;
 }
 
 void sf_packs_install_unlocks(void)
