@@ -1,6 +1,4 @@
-# Build environment for the PS Vita port.
-# The host vitasdk cannot run here (its binaries require glibc 2.38, this
-# machine has 2.35), so every compile happens inside this image.
+# Build environment for the PS Vita port. Every compile happens inside this image.
 FROM vitasdk/vitasdk:latest
 
 # vitaGL and its runtime shader compiler, plus kubridge's user stub (the
