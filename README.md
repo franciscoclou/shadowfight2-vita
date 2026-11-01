@@ -46,7 +46,8 @@ You'll need:
 - The Android APK of Shadow Fight 2 **1.9.38** (versionCode 1000109, armeabi-v7a).
   No other version will work, because the port patches fixed addresses in the
   game's code. This project doesn't link to APKs, so you'll have to supply it.
-- A PC with Linux or WSL, Python 3 and `curl`, to prepare the game data.
+- A PC with [Python 3](https://www.python.org/downloads/), to prepare the game data.
+  It needs about 450 MB of free space.
 
 ### 1. Set up the Vita
 
@@ -70,32 +71,26 @@ Vita and install it with VitaShell.
 
 ### 3. Prepare the game data
 
+Get `make_game_data.py` from the [Releases](../../releases) page and run it on your
+APK:
+
 ```sh
-git clone https://github.com/franciscoclou/shadowfight2-vita.git
-cd shadowfight2-vita
-mkdir apk && unzip /path/to/shadowfight2-1.9.38.apk -d apk
-sha256sum apk/assets/ShadowFight2.s3e
-./scripts/prepare_game.sh
-./scripts/fetch_packs.sh
+python make_game_data.py path/to/shadowfight2-1.9.38.apk
 ```
 
-The `sha256sum` line should print:
+Some systems call it `python3` instead. On Windows you can also double-click the
+script and drag the APK into the window that opens.
 
-```
-4b22b4f9255e138d0c7bdfb8cc08eb451411fa9719f3123b99954301697048e7
-```
-
-If it doesn't, you have a different build of the game and the port won't run it.
-
-`prepare_game.sh` unpacks the game from the APK. `fetch_packs.sh` downloads about
-300 MB of content packs from Nekki's own servers, the same files the Android game
-downloads for acts 2 onward. The packs aren't hosted here, so this step only works
+It checks that the APK is the right version, unpacks the game, and downloads about
+300 MB of content packs from Nekki's own servers. They're the same files the Android
+game downloads for acts 2 onward. If a download fails, run it again and it picks up
+with the packs it still needs. The packs aren't hosted here, so this step only works
 for as long as Nekki keeps serving them.
 
 ### 4. Copy it to the Vita
 
-Copy everything *inside* `game_out/` to `ux0:data/shadowfight2/`, over USB or FTP
-with VitaShell. You should end up with
+The script makes a folder called `shadowfight2` next to your APK. Copy that folder to
+`ux0:data/`, over USB or FTP with VitaShell. You should end up with
 `ux0:data/shadowfight2/ShadowFight2.s3e.raw` and the rest beside it.
 
 Then start the game from the LiveArea. The first launch and the first visit to
@@ -179,6 +174,10 @@ A release build skips the network and writes only
 `shadowfight2` in the build folder is the unstripped ELF. Keep the one that matches
 your build, because crash dumps can't be read without it.
 
+To test on a device, unzip your APK into `apk/`, then run `./scripts/prepare_game.sh`
+and `./scripts/fetch_packs.sh`. They fill `game_out/` using `make_game_data.py`.
+`./scripts/package_release.sh v1.0` makes the files for a release in `release/`.
+
 ### How it works
 
 Shadow Fight 2 is built on the Marmalade SDK, so the game isn't in the APK's `.so`
@@ -212,7 +211,8 @@ image's header, imports and veneers, and can rewrap it as an ELF for Ghidra.
 The port's source code is [MIT licensed](LICENSE). That covers this project only,
 not *Shadow Fight 2* or anything extracted from it.
 
-The VPK also contains these libraries, under their own licences:
+The VPK also contains these libraries, under their own licences. Their licence texts
+are in [licenses/](licenses/), and the VPK installs a copy of them with the game.
 
 | Library | Licence |
 |---|---|
