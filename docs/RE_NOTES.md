@@ -13,7 +13,7 @@ loader logs crash addresses in this form.
 | 0x05 | `B1 5C 94 00 00 00 00 00` | uncompressed size 9,723,057 |
 
 The stream has no end marker and its last 7 bytes do not decode. A decoder
-that raises discards buffered output, so `scripts/unpack_s3e.py` feeds the
+that raises discards buffered output, so `scripts/make_game_data.py` feeds the
 tail byte by byte: that yields 9,723,053 bytes. The 4 missing bytes are the
 end of the XOR'd licence string ("extra" section), which nothing reads.
 
@@ -208,7 +208,7 @@ manager+0xb90, manager 0x4a266ed4, lookup 0x4a25e490).
   files.dz's data is cached in ram the game reads that, but packs keep
   answering first: a pack file with the same path as a cached one is read
   instead and fails its .hash. The 2017 raid pack has 11 such model files,
-  older than 1.9.38's; scripts/fix_packs.py hides them.
+  older than 1.9.38's; scripts/make_game_data.py hides them.
 - Pack URLs and MD5s: Nekki's configs config_SF2.xml,
   config_shadowfight_test.xml, config_shadowfight_raid_stage.xml and
   config_shadowfight_raid_dev.xml under
