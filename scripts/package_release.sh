@@ -35,7 +35,8 @@ https://github.com/franciscoclou/shadowfight2-vita
 3. Install Python 3 on your PC, then run make_game_data.py with your APK. It
    needs about 450 MB of space and downloads about 300 MB from Nekki's servers.
 4. Copy the shadowfight2 folder it makes to ux0:data/ on the Vita.
-5. Start the game.
+5. Start the game. When the first screen appears, close it and start it again:
+   the content packs are only picked up from the second launch on.
 TXT
 (cd "$OUT" && python3 -I -c "
 import zipfile

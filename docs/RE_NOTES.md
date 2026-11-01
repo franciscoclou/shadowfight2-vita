@@ -203,6 +203,12 @@ manager+0xb90, manager 0x4a266ed4, lookup 0x4a25e490).
   dzArchiveAttach (0x4a752ef8). The call at 0x4a69f028 is patched to the
   string copy 0x4a004084, so Hash holds the path instead.
 - 0x4a69e924 detaches and deletes every Attach="1" pack and packs.xml.
+- A fresh install needs two launches. With no ram/ the loader's write fails
+  (sf_packs_register makes ram/assets, not ram/), the game creates ram/ and a
+  packs.xml listing only "files", and the next boot's loader lists the packs.
+  Do not "fix" this by making ram/ first: in the harness, a packs.xml present
+  before the first run was deleted within 5 frames and not recreated by frame
+  320, and the next boot lost it the same way.
 - 0x4a265a78 adds a pack after a download (0x4a26702c).
 - Derbh's open (0x4a753300) tries the attached archives newest first. Once
   files.dz's data is cached in ram the game reads that, but packs keep
