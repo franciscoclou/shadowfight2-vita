@@ -93,9 +93,9 @@ The script makes a folder called `shadowfight2` next to your APK. Copy that fold
 `ux0:data/`, over USB or FTP with VitaShell. You should end up with
 `ux0:data/shadowfight2/ShadowFight2.s3e.raw` and the rest beside it.
 
-Then start the game from the LiveArea. When the first screen appears, close the game
-and start it again: the content packs are only picked up from the second launch on.
-The first launch and the first visit to each stage are slower, because shaders
+Then start the game from the LiveArea. Close it and start it again at least once
+before you reach the second act: the content packs are only picked up from the second
+launch on. The first launch and the first visit to each stage are slower, because shaders
 compile the first time and are cached on the memory card after that.
 
 ## If it doesn't start
