@@ -145,13 +145,14 @@ void sf_packs_register(void)
  * weapons" after Lynx).
  *
  * The check is replaced: before answering as the original does, it makes
- * each act's label follow its gate fight, through the calls ToggleItems
- * makes (on 0x4a28bcf4, off 0x4a28fa68). Gates are the download quests'
- * own, or the fight that sets them off. Turning a label off undoes an
- * earlier build's mistake (it gave the Interlude's level 38-43 items with
- * act 2), and is only done when the gate fight exists.
+ * each act's label follow its gate, through the calls ToggleItems makes
+ * (on 0x4a28bcf4, off 0x4a28fa68). Gates are the download quests' own, or
+ * the fight that sets them off; one starting with '_' is a saved variable,
+ * read as the quests read it. Turning a label off undoes an earlier build's
+ * mistake (it gave the Interlude's level 38-43 items with act 2), and is
+ * only done when the gate fight exists.
  */
-static const struct { const char *label, *fight; } s_unlocks[] = {
+static const struct { const char *label, *gate; } s_unlocks[] = {
     { "ZONE_IM",  "ZONE_6|FINAL_BATTLE|1" },   /* quest: Lynx's Interlude battle shown; its
                                                  * IntermissionStart follows this win */
     { "ZONE_2",   "ZONE_1|BOSS_LYNX|6" },
@@ -160,7 +161,9 @@ static const struct { const char *label, *fight; } s_unlocks[] = {
     { "ZONE_5",   "ZONE_4|BOSS_WASP|6" },
     { "ZONE_6",   "ZONE_5|BOSS_HUNTRESS|6" },
     { "ZONE_7",   "ZONE_6|BOSS_SAMURAI_INTERMISSION|1" },
-    { "ZONE_7_2", "ZONE_7|CLIFFHANGER_STONE_FOREST|1" },   /* quest: Shroud's ambush, on entering it */
+    { "ZONE_7_2", "_Zone7_Shroud_Ambush" },    /* not a fight: quest Zone7_Shroud_Ambush replaces
+                                                * entering the Stone Forest with dialogs and hides
+                                                * the battle, so it is never won */
     { "ZONE_7_3", "ZONE_7|MINIBOSS_SHROUD2|1" },
 };
 
@@ -169,6 +172,7 @@ typedef void *(*fight_fn)(gstring *id);                                 /* 0x4a2
 typedef void *(*fight_record_fn)(void *fight);                          /* 0x4a2a0f00 */
 typedef int   (*toggle_on_fn)(void *profile, gstring *label, int on);   /* 0x4a28bcf4 */
 typedef int   (*toggle_off_fn)(void *profile, gstring *label);          /* 0x4a28fa68 */
+typedef void *(*variable_fn)(void *profile, gstring *key);              /* 0x4a286320 */
 
 /* 1 won, 0 not won, -1 no such fight. */
 static int fight_won(const char *id)
@@ -184,6 +188,18 @@ static int fight_won(const char *id)
     return rec && *(int32_t *)((uint8_t *)rec + 4) > 0;   /* WinCount (0x4a31041c) */
 }
 
+/* The quests' `_Name > 0`: the key includes the '_', the value is a string
+ * at record+0xc (QuestCondition, 0x4a307040). An unset variable is 0. */
+static int variable_set(void *profile, const char *key)
+{
+    gstring s;
+    uint8_t *rec;
+    sf_gstring(&s, key);
+    rec = ((variable_fn)G(0x4a286320))(profile, &s);
+    sf_gstring_free(&s);
+    return rec && atoi(((gstring *)(rec + 0xc))->begin) > 0;
+}
+
 static void grant_won_acts(void *profile)
 {
     static int busy;
@@ -193,16 +209,17 @@ static void grant_won_acts(void *profile)
     busy = 1;
     for (i = 0; i < sizeof(s_unlocks) / sizeof(s_unlocks[0]); i++) {
         gstring label;
+        const char *gate = s_unlocks[i].gate;
         int has, won;
         sf_gstring(&label, s_unlocks[i].label);
         has = ((label_index_fn)G(0x4a285414))(profile, &label) >= 0;
-        won = fight_won(s_unlocks[i].fight);
+        won = gate[0] == '_' ? variable_set(profile, gate) : fight_won(gate);
         if (!has && won == 1) {
             ((toggle_on_fn)G(0x4a28bcf4))(profile, &label, 1);
-            LOGI("packs: %s shop items unlocked (%s won)", s_unlocks[i].label, s_unlocks[i].fight);
+            LOGI("packs: %s shop items unlocked (%s)", s_unlocks[i].label, gate);
         } else if (has && won == 0) {
             ((toggle_off_fn)G(0x4a28fa68))(profile, &label);
-            LOGI("packs: %s shop items locked again (%s not won yet)", s_unlocks[i].label, s_unlocks[i].fight);
+            LOGI("packs: %s shop items locked again (%s not reached yet)", s_unlocks[i].label, gate);
         }
         sf_gstring_free(&label);
     }

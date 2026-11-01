@@ -266,9 +266,16 @@ manager+0xb90, manager 0x4a266ed4, lookup 0x4a25e490).
   QuestCondition::fightFunction (0x4a302ff8), ?Fight(ID).Property.
 - Item levels by label: none 1-6, ZONE_2 7-12 ... ZONE_6 31-36, ZONE_IM
   (the Interlude, after ZONE_6|FINAL_BATTLE|1 starts it) 38-43, ZONE_7
-  44-46, ZONE_7_2 47-49 (after Shroud's ambush on entering
-  ZONE_7|CLIFFHANGER_STONE_FOREST|1), ZONE_7_3 50-52. 0x4a28fa68(profile,
-  &label) is ToggleItems "off".
+  44-46, ZONE_7_2 47-49, ZONE_7_3 50-52. 0x4a28fa68(profile, &label) is
+  ToggleItems "off".
+- ZONE_7_2's gate is `_Zone7_Shroud_Ambush > 0`, not a fight. Quest
+  Zone7_Shroud_Ambush (FightEnter) replaces entering
+  ZONE_7|CLIFFHANGER_STONE_FOREST|1 with dialogs, sets the variable and
+  hides the battle, so that fight's WinCount stays 0.
+- Saved variables: 0x4a286320(profile, &key) -> record or NULL, key "_Name"
+  (the "_" is part of it), map at profile+0xd0, value string at record+0xc.
+  Read that way by QuestCondition (0x4a307040); 0x4a291808(profile, &name,
+  &value) is SetVariable (QuestActionVariable, 0x4a2f32f0).
 - The shop's "Defeat Lynx to unlock ranged weapons" (shopRangedLocked,
   0x4a65c084) is shown whenever the ranged list is empty.
 
