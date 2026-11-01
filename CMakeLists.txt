@@ -23,6 +23,7 @@ set(VITA_VERSION   "01.00")
 set(SF_LOG_HOST "255.255.255.255" CACHE STRING "PC IP that receives debug logs")
 set(SF_LOG_PORT "18194"         CACHE STRING "UDP port for debug logs")
 option(SF_VERBOSE_LOG "Compile in per-frame LOGV() output" OFF)
+option(SF_RELEASE "Public build: log to the memory card only, no network" OFF)
 
 set(CMAKE_C_STANDARD 99)
 add_compile_options(
@@ -40,6 +41,9 @@ add_compile_definitions(
 )
 if(SF_VERBOSE_LOG)
   add_compile_definitions(SF_VERBOSE_LOG=1)
+endif()
+if(SF_RELEASE)
+  add_compile_definitions(SF_RELEASE=1)
 endif()
 
 include_directories(src)

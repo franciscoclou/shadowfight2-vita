@@ -10,7 +10,8 @@
  *
  * Lines are also appended to ux0:data/shadowfight2/debug.log on the Vita itself,
  * so a crash that happens before the network is up is still recoverable over
- * FTP.
+ * FTP. A release build (-DSF_RELEASE=1) writes only that file and never touches
+ * the network.
  */
 
 #include <stdarg.h>

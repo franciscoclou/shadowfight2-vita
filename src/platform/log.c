@@ -23,13 +23,15 @@
 #define NET_HEAP_SIZE (1 * 1024 * 1024)
 #define LINE_MAX      1024
 
-static char s_net_heap[NET_HEAP_SIZE] __attribute__((aligned(16)));
-static int  s_sock = -1;
 static SceUID s_file = -1;
 static SceUID s_mutex = -1;
+#if !SF_RELEASE
+static char s_net_heap[NET_HEAP_SIZE] __attribute__((aligned(16)));
+static int  s_sock = -1;
 static int  s_net_ready = 0;
 static struct SceNetSockaddrIn s_unicast;
 static struct SceNetSockaddrIn s_broadcast;
+#endif
 
 static void open_logfile(void)
 {
@@ -40,6 +42,7 @@ static void open_logfile(void)
                        SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
 }
 
+#if !SF_RELEASE
 static void open_socket(void)
 {
     SceNetInitParam param;
@@ -86,17 +89,24 @@ static void open_socket(void)
 
     s_net_ready = 1;
 }
+#endif
 
 void sf_log_init(void)
 {
     s_mutex = sceKernelCreateMutex("sf_log", 0, 0, NULL);
     open_logfile();
+#if !SF_RELEASE
     open_socket();
+#endif
 
     LOGI("=== Shadow Fight 2 Vita ===");
     LOGI("build %s %s", __DATE__, __TIME__);
+#if SF_RELEASE
+    LOGI("release build, file=%d", (int)(s_file >= 0));
+#else
     LOGI("log target %s:%d (net_ready=%d, file=%d)",
          SF_LOG_HOST, SF_LOG_PORT, s_net_ready, (int)(s_file >= 0));
+#endif
 }
 
 void sf_log_write(const char *level, const char *file, int line, const char *fmt, ...)
@@ -131,12 +141,14 @@ void sf_log_write(const char *level, const char *file, int line, const char *fmt
     if (s_file >= 0)
         sceIoWrite(s_file, out, n);
 
+#if !SF_RELEASE
     if (s_net_ready) {
         sceNetSendto(s_sock, out, n, 0,
                      (struct SceNetSockaddr *)&s_unicast, sizeof(s_unicast));
         sceNetSendto(s_sock, out, n, 0,
                      (struct SceNetSockaddr *)&s_broadcast, sizeof(s_broadcast));
     }
+#endif
 
     if (s_mutex >= 0)
         sceKernelUnlockMutex(s_mutex, 1);
@@ -155,13 +167,15 @@ void sf_log_shutdown(void)
         sceIoClose(s_file);
         s_file = -1;
     }
+#if !SF_RELEASE
     if (s_sock >= 0) {
         sceNetSocketClose(s_sock);
         s_sock = -1;
     }
+    s_net_ready = 0;
+#endif
     if (s_mutex >= 0) {
         sceKernelDeleteMutex(s_mutex);
         s_mutex = -1;
     }
-    s_net_ready = 0;
 }

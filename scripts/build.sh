@@ -4,6 +4,8 @@
 #   ./scripts/build.sh              incremental build
 #   ./scripts/build.sh clean        wipe build/ first
 #   ./scripts/build.sh verbose      compile in per-frame LOGV() output
+#   ./scripts/build.sh release      the public build, in build-release/: logs
+#                                   to the memory card only, no network
 #
 # Outputs build/ShadowFight2.vpk, build/eboot.bin and build/shadowfight2 (the
 # unstripped ELF that symbolises crash dumps -- keep it).
@@ -11,8 +13,14 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 
 CMAKE_EXTRA=()
+case " $* " in
+  *" release "*)
+    export BUILD_DIR="$REPO_ROOT/build-release"
+    CMAKE_EXTRA+=(-DSF_RELEASE=ON) ;;
+esac
 for arg in "$@"; do
   case "$arg" in
+    release) ;;
     clean)   rm -rf "$BUILD_DIR" ;;
     verbose) CMAKE_EXTRA+=(-DSF_VERBOSE_LOG=ON) ;;
     *)       CMAKE_EXTRA+=("$arg") ;;
