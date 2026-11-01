@@ -1,5 +1,7 @@
 # Shadow Fight 2 for PS Vita
 
+![Shadow against Titan, running on a Vita](docs/shots/fight.png)
+
 An unofficial port of *Shadow Fight 2* 1.9.38 (Nekki) to the PlayStation Vita.
 
 This isn't a remake. The game's original ARM code runs unmodified on the Vita,
@@ -12,6 +14,8 @@ its releases will run without it.
 - Physical controls in fights, with the on-screen buttons still available.
 - Offline only. Pop-ups for offers, ads, Facebook and news are removed.
 - An optional cheats panel in the shop. It's on by default.
+
+![The map of the Revelation act](docs/shots/map.png)
 
 ## Controls
 
@@ -29,7 +33,9 @@ its releases will run without it.
 Menus, the map and the shop use the touchscreen. That also means a PlayStation
 TV can't get through the menus, so it isn't supported.
 
-The pause menu has a page showing these controls.
+The pause menu has a page showing these controls:
+
+![The controls page from the pause menu](docs/shots/controls.png)
 
 ## Installing
 
@@ -133,18 +139,21 @@ PROGRESS button deletes it after asking you to confirm.
 
 Anything that needs a server or a store. Multiplayer, purchases and ads are all
 gone, and their leftover buttons show the game's "no connection" message. The
-port never connects to Nekki's servers, so the cheats only change your local save.
+release build doesn't use the network at all, so the cheats only change your local
+save.
 
 ## Legal
 
 **This repository and its releases contain no APK, no game code and no game data.**
 You have to own the game and supply it yourself. The port does nothing without it.
 
-Two things here do come from the game's artwork, because the port needs them:
+Three things here do come from the game's artwork. The first two are in the VPK
+because the port needs them, and the third is only in this repository:
 
 - `sce_sys/`: the LiveArea icon and background, made from the game's key art.
 - `src/assets/`: the port's controls and pause screens, drawn with the game's font
   and icons. These are built into `eboot.bin`.
+- `docs/shots/`: screenshots of the game running on a Vita.
 
 This project isn't affiliated with, endorsed by, or connected to Nekki. *Shadow
 Fight* and its artwork, characters and code belong to Nekki. If you represent Nekki
@@ -159,10 +168,16 @@ build also builds the image, which takes a while.
 ./scripts/build.sh          # -> build/ShadowFight2.vpk
 ./scripts/build.sh clean    # from scratch
 ./scripts/build.sh verbose  # with per-frame logging
+./scripts/build.sh release  # the public build -> build-release/ShadowFight2.vpk
 ```
 
-`build/shadowfight2` is the unstripped ELF. Keep the one that matches your build,
-because crash dumps can't be read without it.
+A normal build also sends its log over UDP to your network, on port 18194. Set
+`PC_IP` in `scripts/env.local.sh` to send it to one PC as well as broadcasting it.
+A release build skips the network and writes only
+`ux0:data/shadowfight2/debug.log`.
+
+`shadowfight2` in the build folder is the unstripped ELF. Keep the one that matches
+your build, because crash dumps can't be read without it.
 
 ### How it works
 

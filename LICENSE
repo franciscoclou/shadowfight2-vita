@@ -24,5 +24,6 @@ SOFTWARE.
 
 This licence covers the source code of this port only. It does not cover
 Shadow Fight 2, its code or its artwork, which belong to Nekki, including the
-artwork in sce_sys/ and src/assets/ that is derived from the game. Third-party
-libraries keep their own licences; see README.md.
+artwork in sce_sys/ and src/assets/ that is derived from the game and the
+screenshots in docs/shots/. Third-party libraries keep their own licences; see
+README.md.
