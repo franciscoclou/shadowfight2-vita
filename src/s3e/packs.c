@@ -111,8 +111,17 @@ void sf_packs_register(void)
     md5_hex(&c, hash);
     snprintf(hash_file, sizeof(hash_file), "%s\n%s", hash, hash);
 
+    /* Only ever rewrite the game's own file. On a fresh install, a packs.xml
+     * that is there before the game's first run fails its cache check
+     * (0x4a25e6f0), which wipes the cache and leaves the game on its loading
+     * screen. The game writes its own on that run, so the packs are listed
+     * from the next launch on. */
     old = read_file(path);
-    if (old && !strcmp(old, xml)) {
+    if (!old) {
+        LOGI("packs: %u installed, listed from the next launch on", found);
+        return;
+    }
+    if (!strcmp(old, xml)) {
         free(old);
         old = read_file(hash_path);
         if (old && !strcmp(old, hash_file)) {
@@ -123,8 +132,6 @@ void sf_packs_register(void)
     }
     free(old);
 
-    snprintf(hash_path, sizeof(hash_path), "%s/ram/assets", sf_data_dir);
-    mkdir(hash_path, 0777);
     snprintf(hash_path, sizeof(hash_path), "%s.hash", path);
     if (write_file(path, xml) && write_file(hash_path, hash_file))
         LOGI("packs: %u installed, packs.xml written", found);
