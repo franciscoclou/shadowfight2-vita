@@ -2,12 +2,8 @@
 #define SF_PLATFORM_H
 
 /* The few things the loader and the s3e shims need from the machine they
- * run on. Two implementations:
- *   src/platform/vita.c      the PS Vita (kubridge, vitaGL, sceCtrl/Touch)
- *   tests/harness/plat_linux.c  Linux armhf under qemu-arm, Mesa EGL --
- *                               boots and screenshots the game on the PC
- * Everything in src/s3e/ and src/loader/ is otherwise plain C + stdio, so
- * both builds run the same shim code.
+ * run on, implemented by src/platform/vita.c (kubridge, vitaGL, sceCtrl/Touch).
+ * Everything in src/s3e/ and src/loader/ is otherwise plain C + stdio.
  */
 
 #include <stdint.h>

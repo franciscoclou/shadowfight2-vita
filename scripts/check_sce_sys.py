@@ -4,7 +4,7 @@
 scePromoterUtility rejects a package at 99% with error 0x8010113D when these
 images are truecolour PNGs. They must be 8-bit palette (colour type 3, with a
 PLTE chunk) at exactly the sizes Sony specifies -- the same format VitaShell's
-own VPK ships. Regenerate them with scripts/make_livearea.sh.
+own VPK ships.
 """
 
 import struct
@@ -51,7 +51,6 @@ def main():
     if failed:
         print()
         print("  These would install-fail on the Vita with error 0x8010113D.")
-        print("  Fix: ./scripts/make_livearea.sh")
         return 1
     return 0
 

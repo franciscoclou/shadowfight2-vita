@@ -18,7 +18,7 @@
  * Its title label (dlg+0x178, brown) is hidden under controls_title.png,
  * gold like the game's own titles.
  *
- * Images (src/assets, scripts/make_ui_art.py) are linked into the eboot
+ * Images (src/assets) are linked into the eboot
  * (ui_assets.S) and opened as memory files under textures/sfport/.
  */
 #include "s3e/game.h"

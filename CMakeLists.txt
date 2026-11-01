@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-# This project is always built inside the vitasdk Docker image
-# (see scripts/build.sh) -- the host toolchain in ~/vitasdk cannot run on
-# Ubuntu 22.04 because its binaries need glibc 2.38.
+# This project is built inside the vitasdk Docker image (see scripts/build.sh).
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
   if(DEFINED ENV{VITASDK})
     set(CMAKE_TOOLCHAIN_FILE "$ENV{VITASDK}/share/vita.toolchain.cmake"
@@ -22,7 +20,7 @@ set(VITA_VERSION   "01.00")
 # --- tunables --------------------------------------------------------------
 # Where the game sends its live UDP log. Passed in by scripts/build.sh so the
 # PC's IP can change without editing sources.
-set(SF_LOG_HOST "192.168.1.149" CACHE STRING "PC IP that receives debug logs")
+set(SF_LOG_HOST "255.255.255.255" CACHE STRING "PC IP that receives debug logs")
 set(SF_LOG_PORT "18194"         CACHE STRING "UDP port for debug logs")
 option(SF_VERBOSE_LOG "Compile in per-frame LOGV() output" OFF)
 

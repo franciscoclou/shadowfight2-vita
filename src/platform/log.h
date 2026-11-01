@@ -6,7 +6,6 @@
  * The Vita has no console, so every log line is sent as a UDP datagram to the
  * development PC and to the subnet broadcast address. Listen for it with:
  *
- *     ./scripts/log.sh          (or)
  *     stdbuf -oL nc -u -k -l 18194 >> debug.log 2>&1
  *
  * Lines are also appended to ux0:data/shadowfight2/debug.log on the Vita itself,

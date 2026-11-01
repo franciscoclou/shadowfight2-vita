@@ -390,7 +390,7 @@ void *sf_quests_load(const char *name, uint32_t *size)
 }
 
 /* Harness check (SF_QUESTS_TEST=<dir>): write every edited quest file to
- * dir so scripts/check_quests.py can compare it with the original. */
+ * dir so it can be compared with the original. */
 void sf_quests_selftest(const char *dir)
 {
     size_t i, j;

@@ -53,4 +53,5 @@ echo " build ok"
 ls -la "$BUILD_DIR"/*.vpk "$BUILD_DIR"/eboot.bin 2>/dev/null | sed 's/^/  /'
 echo "=========================================================="
 echo
-"$REPO_ROOT/scripts/deploy.sh"
+# A local helper, not part of the repo.
+if [ -x "$REPO_ROOT/scripts/deploy.sh" ]; then "$REPO_ROOT/scripts/deploy.sh"; fi

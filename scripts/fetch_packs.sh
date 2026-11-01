@@ -7,7 +7,7 @@
 # the boss models, raids, clans) is not in the APK: the game downloads it at
 # runtime as Derbh .dz packs. The port has no network, so the packs are
 # fetched here once and copied next to ShadowFight2.s3e.raw on the Vita
-# (option D of ./scripts/deploy.sh). At boot the loader lists every pack it
+# (ux0:data/shadowfight2/). At boot the loader lists every pack it
 # finds there in ram/assets/packs.xml (src/s3e/packs.c), which is how the
 # game knows a pack is installed.
 #
@@ -65,5 +65,5 @@ python3 -I "$REPO_ROOT/scripts/fix_packs.py" "$GAME_OUT/assets/files.dz" "$OUT"/
 
 echo
 echo ">> packs: $(du -ch "$OUT"/*.dz | tail -n 1 | cut -f1)"
-echo ">> copy it to the Vita with option (D) from ./scripts/deploy.sh"
+echo ">> copy them to ux0:data/shadowfight2/ on the Vita"
 exit $failed

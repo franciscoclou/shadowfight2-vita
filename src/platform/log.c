@@ -14,7 +14,7 @@
 #include <string.h>
 
 #ifndef SF_LOG_HOST
-#define SF_LOG_HOST "192.168.1.149"   /* overridden by -DSF_LOG_HOST in CMake */
+#define SF_LOG_HOST "255.255.255.255"   /* overridden by -DSF_LOG_HOST in CMake */
 #endif
 #ifndef SF_LOG_PORT
 #define SF_LOG_PORT 18194

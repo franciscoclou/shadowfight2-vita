@@ -1,4 +1,4 @@
-/* The port's UI images (src/assets, made by scripts/make_ui_art.py),
+/* The port's UI images (src/assets),
  * linked in so ui.c can serve them as files. Paths are found through
  * the -I src include path. */
     .section .rodata.sf_assets, "a"

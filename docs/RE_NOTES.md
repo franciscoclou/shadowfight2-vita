@@ -169,8 +169,6 @@ the bytes supplied, fewer than `len` at the end. `DecompRead(h, buf,
 - The background thread (4001, 0x4a1d5d24) loops sleep(10) -> locked
   periodic task 0x4a1d58a0; its sleep (0x4a78c6e8) spins on
   s3eDeviceYield(remaining ms).
-- scripts/func_strings.py <start> <end> lists the PC-relative strings a
-  function uses, which Ghidra shows as DAT_ + constant.
 
 ## Save hashes (anti-tamper)
 
