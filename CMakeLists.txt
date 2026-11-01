@@ -112,4 +112,10 @@ vita_create_vpk(ShadowFight2.vpk ${VITA_TITLEID} eboot.bin
   FILE ${CMAKE_SOURCE_DIR}/sce_sys/livearea/contents/bg.png      sce_sys/livearea/contents/bg.png
   FILE ${CMAKE_SOURCE_DIR}/sce_sys/livearea/contents/startup.png sce_sys/livearea/contents/startup.png
   FILE ${CMAKE_SOURCE_DIR}/sce_sys/livearea/contents/template.xml sce_sys/livearea/contents/template.xml
+  FILE ${CMAKE_SOURCE_DIR}/LICENSE                licenses/LICENSE.txt
+  FILE ${CMAKE_SOURCE_DIR}/licenses/README.txt    licenses/README.txt
+  FILE ${CMAKE_SOURCE_DIR}/licenses/GPL-3.0.txt   licenses/GPL-3.0.txt
+  FILE ${CMAKE_SOURCE_DIR}/licenses/LGPL-3.0.txt  licenses/LGPL-3.0.txt
+  FILE ${CMAKE_SOURCE_DIR}/licenses/LGPL-2.1.txt  licenses/LGPL-2.1.txt
+  FILE ${CMAKE_SOURCE_DIR}/licenses/math-neon.txt licenses/math-neon.txt
 )
